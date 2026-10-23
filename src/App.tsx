@@ -1,7 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import NumberFlow from '@number-flow/react';
 import { QRCodeSVG } from 'qrcode.react';
-import { BrandWordmark } from './bloxwap/BrandWordmark';
 import { InstallDialog, type InstallPrompt } from './components/InstallDialog';
 import { ASSET, feedStatus } from './market/model';
 import { useMarket } from './market/use-market';
@@ -18,7 +16,6 @@ export default function App() {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
   const status = feedStatus(market, display.now, display.online);
   const live = status === 'live';
-  const price = market.quote?.price;
 
   useEffect(() => {
     const capture = (event: Event) => { event.preventDefault(); setPrompt(event as InstallPrompt); };
@@ -31,15 +28,12 @@ export default function App() {
   return <main className={`screensaver ${live ? 'is-live' : 'is-waiting'} ${display.controls || installOpen ? 'controls-visible' : ''} ${display.automatic ? 'automatic' : ''}`}>
     <h1 className="sr-only">Bloxwap Bitcoin screensaver</h1>
     <div className="grid-bg" aria-hidden="true" />
-    <div className="brand-watermark"><BrandWordmark capHeight={36} letters="currentColor" x="currentColor" /></div>
     <Suspense fallback={<div className="chart-region" />}><LiveChart points={market.points} quote={market.quote} windowMinutes={minutes} live={live} now={display.now} /></Suspense>
 
     <header className="masthead">
-      <div className="price-pill" aria-label="Current Bitcoin price">
+      <div className="asset-pill">
         <img src={`${import.meta.env.BASE_URL}brand/BTC.svg`} width="36" height="36" alt="Bitcoin" />
-        <div className="price-readout" data-testid="price" aria-label={price !== undefined ? `Bitcoin ${price.toFixed(2)} US dollars` : 'Waiting for Bitcoin price'}>
-          <span aria-hidden="true">{price !== undefined ? <NumberFlow value={price} locales="en-US" format={{ style: 'currency', currency: 'USD' }} transformTiming={{ duration: 300, easing: 'ease-in-out' }} /> : '—'}</span>
-        </div>
+        <span>BTC / USD</span>
       </div>
       <div className="connection" role="status" aria-live="polite"><span className="connection-light" /><span>{STATUS_LABEL[status]}</span><span className="connection-source">Hyperliquid</span></div>
     </header>
@@ -50,7 +44,6 @@ export default function App() {
     </div>
 
     <footer className="qr-block">
-      <div className="qr-caption"><BrandWordmark capHeight={16} /><span>Open Bitcoin <span aria-hidden="true">↗</span></span></div>
       <a href={ASSET.url} target="_blank" rel="noreferrer" aria-label="Open Bitcoin on Bloxwap" className="qr-link"><QRCodeSVG value={ASSET.url} size={88} marginSize={4} level="M" bgColor="#fafafa" fgColor="#0a0a0a" title="Open Bitcoin on Bloxwap" /></a>
     </footer>
 

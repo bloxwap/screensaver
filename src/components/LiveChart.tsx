@@ -2,16 +2,17 @@ import { useEffect, useRef } from 'react';
 import NumberFlow from '@number-flow/react';
 import { createChart, createSeriesRegistry, type Chart, type SeriesDrawFn } from '@bloxwap/chart';
 import { CHART_ANIM_MS, FLOW_PX_PER_SEC, TICK_PX, evalBezier, labelDecimalsFor, tickSpacingFor, writeSmoothPath } from '../bloxwap/chart-math';
+import { BrandWordmark } from '../bloxwap/BrandWordmark';
 import type { PricePoint, Quote } from '../market/model';
 
-// Bloxwap's trading screen reserves 100px for the price pill, with 18px edge gutters.
+// Keep the trading screen's edge scale; reserve the measured width of the larger readout.
 const EDGE = 18;
-const LABEL_RESERVE = 100;
 
 export function LiveChart({ points, quote, windowMinutes, live, now }: {
   points: PricePoint[]; quote: Quote | null; windowMinutes: number; live: boolean; now: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const markerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
   const latest = useRef({ quote, windowMinutes, live, now });
   latest.current = { quote, windowMinutes, live, now };
@@ -19,8 +20,11 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
   useEffect(() => {
     const canvas = canvasRef.current!;
     const host = canvas.parentElement!;
+    const marker = markerRef.current!;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let width = host.clientWidth, height = host.clientHeight;
+    let markerWidth = marker.offsetWidth, markerHeight = marker.offsetHeight;
+    let density = 1;
     let shownPrice = 0, fromPrice = 0, targetPrice = 0, tweenStart = 0;
     const draw: SeriesDrawFn = (ctx, candles) => {
       ctx.clearRect(0, 0, width, height);
@@ -35,9 +39,10 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
       }
       shownPrice = motion.matches ? price : fromPrice + (price - fromPrice) * evalBezier(Math.min(1, (frameTime - tweenStart) / CHART_ANIM_MS));
       const centerY = height / 2;
-      const trailEnd = Math.max(EDGE + 40, width - EDGE - LABEL_RESERVE);
+      const trailEnd = Math.max(EDGE + 40, width - 8 - markerWidth + 1);
       const end = live ? (motion.matches ? now : Date.now()) : (quote?.time ?? now);
-      const pxPerSecond = windowMinutes ? (trailEnd - EDGE) / (windowMinutes * 60) : FLOW_PX_PER_SEC;
+      const tickPixels = TICK_PX * density;
+      const pxPerSecond = windowMinutes ? (trailEnd - EDGE) / (windowMinutes * 60) : FLOW_PX_PER_SEC * density;
       const start = end - (trailEnd - EDGE) / pxPerSecond * 1_000;
       // Retain the observation immediately before the viewport for a continuous entry.
       let first = candles.findIndex((point) => point.time * 1_000 >= start);
@@ -47,14 +52,14 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
       if (windowMinutes) {
         // Longer history remains readable while retaining the same 44px price tape.
         const halfRange = Math.max(spacing, ...visible.map((point) => Math.abs(point.close - shownPrice)));
-        spacing = Math.max(spacing, Math.ceil(halfRange * 2.3 / height * TICK_PX * 100) / 100);
+        spacing = Math.max(spacing, Math.ceil(halfRange * 2.3 / height * tickPixels * 100) / 100);
       }
-      const yFor = (value: number) => centerY - (value - shownPrice) / spacing * TICK_PX;
+      const yFor = (value: number) => centerY - (value - shownPrice) / spacing * tickPixels;
       const xFor = (time: number) => trailEnd - (end - time) / 1_000 * pxPerSecond;
       const anchor = Math.round(shownPrice / spacing) * spacing;
-      const rows = Math.ceil(height / (2 * TICK_PX)) + 1;
+      const rows = Math.ceil(height / (2 * tickPixels)) + 1;
       const decimals = labelDecimalsFor(spacing, shownPrice);
-      ctx.font = '13px "Bloxwap Mono", monospace';
+      ctx.font = `${13 * density}px "Bloxwap Mono", monospace`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 1;
@@ -66,7 +71,7 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
         const y = yFor(value);
         ctx.moveTo(EDGE - 8, y); ctx.lineTo(EDGE, y);
         ctx.moveTo(width - EDGE, y); ctx.lineTo(width - EDGE + 8, y);
-        if (Math.abs(y - centerY) > 25) ctx.fillText(value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }), width - 32, y);
+        if (Math.abs(y - centerY) > markerHeight / 2 + 12) ctx.fillText(value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }), width - 32, y);
       }
       ctx.stroke();
       const path: [number, number][] = visible.map((point) => [xFor(point.time * 1_000), yFor(point.close)]);
@@ -114,10 +119,14 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
     chartRef.current = chart;
     const resize = () => {
       width = host.clientWidth; height = host.clientHeight;
+      markerWidth = marker.offsetWidth; markerHeight = marker.offsetHeight;
+      density = Number(getComputedStyle(host).getPropertyValue('--chart-scale')) || 1;
+      host.parentElement!.style.setProperty('--price-reserve', `${markerWidth + 8}px`);
       chart.resize(width, height, Math.min(window.devicePixelRatio || 1, 2));
     };
     const observer = new ResizeObserver(resize);
     observer.observe(host);
+    observer.observe(marker);
     resize();
     let frame = 0, lastFrame = 0;
     const animate = (time: number) => {
@@ -139,9 +148,10 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
     : 'Waiting for a live Bitcoin price. The trail shows available price observations.';
   return <section className="chart-region" aria-label={`Bitcoin price chart, ${windowMinutes ? `last ${windowMinutes} minutes` : 'live view'}`} aria-describedby="chart-summary">
     <p id="chart-summary" className="sr-only">{summary}</p>
+    <div className="brand-watermark"><BrandWordmark capHeight={36} letters="currentColor" x="currentColor" /></div>
     <div className="chart-plot"><canvas ref={canvasRef} aria-label="Bitcoin price trail and altitude scale" role="img" /></div>
-    <div className="current-marker" aria-hidden="true">
-      {quote ? <NumberFlow value={quote.price} locales="en-US" format={{ style: 'currency', currency: 'USD' }} transformTiming={{ duration: 300, easing: 'ease-in-out' }} /> : '—'}
+    <div ref={markerRef} className="current-marker" data-testid="price" role="img" aria-label={quote ? `Bitcoin ${quote.price.toFixed(2)} US dollars` : 'Waiting for Bitcoin price'}>
+      <span aria-hidden="true">{quote ? <NumberFlow value={quote.price} locales="en-US" format={{ style: 'currency', currency: 'USD' }} transformTiming={{ duration: 300, easing: 'ease-in-out' }} /> : '—'}</span>
     </div>
     {!points.length && <span className="chart-empty">Waiting for market data</span>}
   </section>;

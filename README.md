@@ -2,7 +2,7 @@
 
 Bitcoin, in motion. A full-screen price display built with [Bloxwap Chart](https://github.com/bloxwap/chart), the [Bloxwap Hyperliquid SDK](https://github.com/bloxwap/hyperliquid), and [Bloxwap fonts](https://github.com/bloxwap/font).
 
-The price rolls like an altimeter, with a live chart centered on the current price and a bottom-right QR code that opens [Bitcoin on Bloxwap](https://bloxwap.app/trade/BTC). Starts with BTC/USD on Hyperliquid's Bitcoin perpetual market.
+A large green price readout rolls like an altimeter, with a full-screen chart centered on the current price and a bottom-right QR code that opens [Bitcoin on Bloxwap](https://bloxwap.app/trade/BTC). Starts with BTC/USD on Hyperliquid's Bitcoin perpetual market.
 
 ## Run
 
@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:4173. Move the pointer or tap to reveal Live / 5M / 15M / 1H, installation, keep-awake, and full-screen controls. Controls also remain available by keyboard. The QR code stays visible.
+Open http://127.0.0.1:4173. Move the pointer or tap to reveal Live / 5M / 15M / 1H, installation, keep-awake, and full-screen controls. The app opens with only the chart, large price, subtle watermark, and QR code visible. Asset identification and controls appear on interaction, then fade after four seconds; keyboard focus keeps controls visible. Delayed/offline status remains visible. The QR code stays in the bottom-right corner.
 
 ```sh
 npm run build       # Type check + static PWA in dist/
@@ -57,7 +57,7 @@ Serve `dist/` from any HTTPS static host. The relative Vite base, manifest, and 
 
 - `@bloxwap/hyperliquid` opens one mainnet WebSocket per display. A fast `l2Book` subscription supplies the unrounded `(best bid + best ask) / 2`, matching Bloxwap's midpoint convention. `activeAssetCtx` supplies the previous-day price and 24-hour USD volume.
 - HTTP `candleSnapshot` seeds one hour of actual **closed one-minute trade candles**. The trail initially contains those closes, then records observed live midpoints. History and midpoint ticks are related price series, not identical measurements. Only live book updates drive the price pills and freshness indicator.
-- Charts use `@bloxwap/chart` with a custom series renderer using the monorepo’s shared monotone spline and altimeter math. The default Live view moves at 50px/second with price ticks every 44px, matching the trading app. Optional 5-minute, 15-minute, and 1-hour views fit the selected history. No random prices or synthetic historical candles are generated. A line between observations is visual interpolation, not an assertion of trades during the gap.
+- Charts use `@bloxwap/chart` with a custom series renderer using the monorepo’s shared monotone spline and altimeter math. The default Live view uses the trading app’s 50px/second flow and 44px price-tick spacing, scaled together by 1.5× on large displays. Optional 5-minute, 15-minute, and 1-hour views fit the selected history. No random prices or synthetic historical candles are generated. A line between observations is visual interpolation, not an assertion of trades during the gap.
 - Bid/ask, timestamps, and frame ordering are validated. An open connection is insufficient for “LIVE”: the displayed quote must have arrived after the current connection opened and have a server timestamp less than 15 seconds old. Device clocks should be synchronized.
 - The SDK reconnects and resubscribes. The app refreshes history after reconnect, retries failed subscriptions and history, and rebuilds a silent connection after 30 seconds. Late history cannot overwrite newer live samples.
 - Storage is bounded to an hour and 3,700 points. Display work pauses while hidden. Canvas resolution is capped at 2× and continuous flow at 30fps; reduced-motion settings use static readouts and update the chart on observations/clock ticks without continuous motion.

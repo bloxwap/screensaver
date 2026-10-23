@@ -41,11 +41,15 @@ test('SDK updates price and chart, QR points to BTC, and install controls work',
   await expect(page.getByRole('status')).toContainText('Live');
   await expect(page.getByRole('link', { name: 'Open Bitcoin on Bloxwap', exact: true })).toHaveAttribute('href', 'https://bloxwap.app/trade/BTC');
   await expect(page.locator('.current-marker')).toBeVisible();
+  await expect(page.locator('.masthead')).toHaveCSS('opacity', '0');
+  await expect(page.locator('.display-controls')).toHaveCSS('opacity', '0');
+  expect(await page.getByTestId('price').evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(28);
   feed.sendBook(67025.5, Date.now() + 1_000);
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67025.50 US dollars');
   // A delayed network frame cannot move the display backwards.
   feed.sendBook(1, Date.now() - 10_000);
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67025.50 US dollars');
+  await page.mouse.move(40, 100);
   await page.getByRole('button', { name: '1H', exact: true }).click();
   await expect(page.getByRole('region', { name: /last 60 minutes/ })).toBeVisible();
   await expect(page.getByRole('button', { name: '1H', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -53,7 +57,7 @@ test('SDK updates price and chart, QR points to BTC, and install controls work',
   const plot = await page.locator('.chart-plot').boundingBox();
   expect(marker!.x + marker!.width).toBeCloseTo(plot!.width - 8, 0);
   expect(marker!.y + marker!.height / 2).toBeCloseTo(plot!.height / 2, 0);
-  await expect(page.locator('.price-pill img')).toHaveAttribute('src', /brand\/BTC.svg$/);
+  await expect(page.locator('.asset-pill img')).toHaveAttribute('src', /brand\/BTC.svg$/);
   await page.getByRole('button', { name: 'Live', exact: true }).click();
   await expect(page.getByRole('region', { name: /live view/ })).toBeVisible();
   await page.getByRole('button', { name: /Install/ }).click();

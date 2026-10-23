@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 export function useDisplay() {
   const [now, setNow] = useState(Date.now());
   const [online, setOnline] = useState(navigator.onLine);
-  const [controls, setControls] = useState(true);
+  const [controls, setControls] = useState(false);
   const [awake, setAwake] = useState(false);
   const [message, setMessage] = useState('');
   const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
@@ -22,7 +22,6 @@ export function useDisplay() {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => setControls(false), 4_000);
     };
-    show();
     window.addEventListener('pointermove', show, { passive: true });
     window.addEventListener('pointerdown', show, { passive: true });
     window.addEventListener('keydown', show);
