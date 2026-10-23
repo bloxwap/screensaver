@@ -1,0 +1,86 @@
+{
+  "name": "@bloxwap/screensaver",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A live Bitcoin screensaver, powered by Bloxwap and Hyperliquid.",
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "author": "Bloxwap",
+  "repository": "https://github.com/bloxwap/screensaver",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "node scripts/third-party-notices.mjs && tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "tsx --test src/market/*.test.ts desktop/*.test.cjs",
+    "test:browser": "playwright test",
+    "desktop": "npm run build && install-electron && electron .",
+    "desktop:pack": "npm run build && node scripts/stage-desktop.mjs && electron-builder --dir",
+    "desktop:dist": "npm run build && node scripts/stage-desktop.mjs && electron-builder --publish never"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "build": {
+    "appId": "com.bloxwap.screensaver",
+    "productName": "Bloxwap Screensaver",
+    "directories": {
+      "output": "release",
+      "app": ".cache/desktop-app"
+    },
+    "files": [
+      "dist/**/*",
+      "desktop/**/*.cjs",
+      "!desktop/**/*.test.cjs",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.finance",
+      "icon": "public/icon-512.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/icon-512.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "public/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "npmRebuild": false
+  },
+  "devDependencies": {
+    "@bloxwap/chart": "0.4.0",
+    "@bloxwap/font": "0.1.4",
+    "@bloxwap/hyperliquid": "0.7.0",
+    "@number-flow/react": "0.6.2",
+    "qrcode.react": "4.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "sharp": "0.35.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vite-plugin-pwa": "2.0.0"
+  }
+}
