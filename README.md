@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:4173. Move the pointer or tap to reveal the time-window, installation, keep-awake, and full-screen controls. Controls also remain available by keyboard. The QR code stays visible.
+Open http://127.0.0.1:4173. Move the pointer or tap to reveal Live / 5M / 15M / 1H, installation, keep-awake, and full-screen controls. Controls also remain available by keyboard. The QR code stays visible.
 
 ```sh
 npm run build       # Type check + static PWA in dist/
@@ -56,11 +56,25 @@ Serve `dist/` from any HTTPS static host. The relative Vite base, manifest, and 
 ## Data and display
 
 - `@bloxwap/hyperliquid` opens one mainnet WebSocket per display. A fast `l2Book` subscription supplies the unrounded `(best bid + best ask) / 2`, matching Bloxwap's midpoint convention. `activeAssetCtx` supplies the previous-day price and 24-hour USD volume.
-- HTTP `candleSnapshot` seeds one hour of actual **closed one-minute trade candles**. The trail initially contains those closes, then records observed live midpoints. History and midpoint ticks are related price series, not identical measurements. Only live book updates drive the large price and freshness indicator.
-- Charts use `@bloxwap/chart`, with 5-minute, 15-minute, and 1-hour windows. Observations are sampled into screen-sized time buckets; no random prices or synthetic historical candles are generated. A line between observations is visual interpolation, not an assertion of trades during the gap.
+- HTTP `candleSnapshot` seeds one hour of actual **closed one-minute trade candles**. The trail initially contains those closes, then records observed live midpoints. History and midpoint ticks are related price series, not identical measurements. Only live book updates drive the price pills and freshness indicator.
+- Charts use `@bloxwap/chart` with a custom series renderer using the monorepo’s shared monotone spline and altimeter math. The default Live view moves at 50px/second with price ticks every 44px, matching the trading app. Optional 5-minute, 15-minute, and 1-hour views fit the selected history. No random prices or synthetic historical candles are generated. A line between observations is visual interpolation, not an assertion of trades during the gap.
 - Bid/ask, timestamps, and frame ordering are validated. An open connection is insufficient for “LIVE”: the displayed quote must have arrived after the current connection opened and have a server timestamp less than 15 seconds old. Device clocks should be synchronized.
 - The SDK reconnects and resubscribes. The app refreshes history after reconnect, retries failed subscriptions and history, and rebuilds a silent connection after 30 seconds. Late history cannot overwrite newer live samples.
-- Storage is bounded to an hour and 3,700 points. Display work pauses while hidden. Canvas resolution is capped at 2×; reduced-motion settings disable the rolling animation and CSS transitions.
+- Storage is bounded to an hour and 3,700 points. Display work pauses while hidden. Canvas resolution is capped at 2× and continuous flow at 30fps; reduced-motion settings use static readouts and update the chart on observations/clock ticks without continuous motion.
+
+## Bloxwap design sources
+
+The display follows [Bloxwap’s Bitcoin trading screen](https://bloxwap.app/trade/BTC), [brand guide](https://bloxwap.com/docs/brand), and [HIG](https://bloxwap.github.io/hig/). The supplied `/tradeBTCa/BTC` URL returned 404; `/trade/BTC` is the canonical route.
+
+`src/bloxwap/` and `public/brand/` contain an explicit snapshot from `../monorepo`: the drawn wordmark and icon geometry, Bitcoin SVG, color tokens, Bloxwap Sans/Mono, Space Grotesk Bold, and shared chart geometry/easing. The grid and layout follow the app’s trading screen. `src/bloxwap/provenance.json` records source paths, commit, font version, and hashes. Font licenses ship with the app. Public builds need no monorepo checkout.
+
+To refresh from a sibling checkout with its font dependency installed:
+
+```sh
+npm run sync:bloxwap
+```
+
+The HIG informs readable numeric labels, persistent stale/offline states, a chart text summary, keyboard focus, visible dialog dismissal, touch targets, and reduced motion. The candidate HIG chart wrapper targets an older chart SDK, so this app uses the current chart SDK directly.
 
 ## Layout
 

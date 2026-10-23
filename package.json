@@ -15,7 +15,8 @@
     "test:browser": "playwright test",
     "desktop": "npm run build && install-electron && electron .",
     "desktop:pack": "npm run build && node scripts/stage-desktop.mjs && electron-builder --dir",
-    "desktop:dist": "npm run build && node scripts/stage-desktop.mjs && electron-builder --publish never"
+    "desktop:dist": "npm run build && node scripts/stage-desktop.mjs && electron-builder --publish never",
+    "sync:bloxwap": "node scripts/sync-bloxwap-assets.mjs && node scripts/generate-icons.mjs"
   },
   "engines": {
     "node": ">=24"
@@ -64,12 +65,8 @@
   },
   "devDependencies": {
     "@bloxwap/chart": "0.4.0",
-    "@bloxwap/font": "0.1.4",
     "@bloxwap/hyperliquid": "0.7.0",
     "@number-flow/react": "0.6.2",
-    "qrcode.react": "4.2.0",
-    "react": "19.3.1",
-    "react-dom": "19.3.1",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",
     "@types/react": "19.3.0",
@@ -77,6 +74,9 @@
     "@vitejs/plugin-react": "6.1.2",
     "electron": "45.0.0",
     "electron-builder": "26.15.3",
+    "qrcode.react": "4.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "sharp": "0.35.5",
     "tsx": "4.23.15",
     "typescript": "7.0.2",

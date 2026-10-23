@@ -15,7 +15,7 @@ test('installed shell loads offline without inventing a cached price', async ({ 
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('status')).toContainText('OFFLINE');
+  await expect(page.getByRole('status')).toContainText('Offline');
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Waiting for Bitcoin price');
   await expect(page.getByRole('link', { name: 'Open Bitcoin on Bloxwap', exact: true })).toBeVisible();
 });

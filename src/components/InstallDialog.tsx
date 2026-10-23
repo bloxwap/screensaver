@@ -19,9 +19,9 @@ export function InstallDialog({ onClose, prompt, onPromptUsed }: { onClose: () =
     catch { setError('Could not save desktop preferences.'); }
   }
 
-  return <dialog ref={ref} className="install-dialog" onCancel={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
-    <div className="dialog-top"><span className="eyebrow">MAKE YOURSELF AT HOME</span><button className="icon-button" onClick={onClose} aria-label="Close installation instructions">×</button></div>
-    <h2>Bitcoin. Always in view.</h2>
+  return <dialog ref={ref} className="install-dialog" aria-labelledby="install-title" onCancel={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+    <div className="dialog-top"><span className="eyebrow">Bloxwap screensaver</span><button className="icon-button" onClick={onClose} aria-label="Close installation instructions">×</button></div>
+    <h2 id="install-title">Keep Bitcoin in view.</h2>
     <p>Give the market a little space on your screen.</p>
     {prompt && <button className="install-primary" onClick={async () => {
       try { await prompt.prompt(); await prompt.userChoice; onPromptUsed(); } catch { setError('Use your browser’s install menu to add the app.'); }

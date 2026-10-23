@@ -78,10 +78,3 @@ export function feedStatus(snapshot: MarketSnapshot, now: number, online: boolea
   if (quote.receivedAt < snapshot.connectedAt || now - quote.time > STALE_MS || now - quote.receivedAt > STALE_MS) return 'stale';
   return 'live';
 }
-
-export function tickStep(span: number): number {
-  const raw = Math.max(span / 6, 0.01);
-  const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const normalized = raw / magnitude;
-  return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
-}

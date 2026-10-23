@@ -1,129 +1,148 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type Chart } from '@bloxwap/chart';
-import { tickStep, type PricePoint, type Quote } from '../market/model';
+import NumberFlow from '@number-flow/react';
+import { createChart, createSeriesRegistry, type Chart, type SeriesDrawFn } from '@bloxwap/chart';
+import { CHART_ANIM_MS, FLOW_PX_PER_SEC, TICK_PX, evalBezier, labelDecimalsFor, tickSpacingFor, writeSmoothPath } from '../bloxwap/chart-math';
+import type { PricePoint, Quote } from '../market/model';
 
-function indexAtTime(points: PricePoint[], time: number, interval: number): number {
-  if (time < points[0].time) return (time - points[0].time) / interval;
-  const last = points.length - 1;
-  if (time >= points[last].time) return last + (time - points[last].time) / interval;
-  let lo = 0, hi = last;
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (points[mid].time <= time) lo = mid; else hi = mid;
-  }
-  return lo + (time - points[lo].time) / (points[hi].time - points[lo].time);
-}
+// Bloxwap's trading screen reserves 100px for the price pill, with 18px edge gutters.
+const EDGE = 18;
+const LABEL_RESERVE = 100;
 
 export function LiveChart({ points, quote, windowMinutes, live, now }: {
   points: PricePoint[]; quote: Quote | null; windowMinutes: number; live: boolean; now: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
-  const latest = useRef({ points, quote, windowMinutes, live, now });
-  latest.current = { points, quote, windowMinutes, live, now };
-  const paintRef = useRef<() => void>(() => {});
+  const latest = useRef({ quote, windowMinutes, live, now });
+  latest.current = { quote, windowMinutes, live, now };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const overlay = overlayRef.current!;
     const host = canvas.parentElement!;
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    let width = host.clientWidth, height = host.clientHeight;
+    let shownPrice = 0, fromPrice = 0, targetPrice = 0, tweenStart = 0;
+    const draw: SeriesDrawFn = (ctx, candles) => {
+      ctx.clearRect(0, 0, width, height);
+      const { quote, windowMinutes, live, now } = latest.current;
+      const price = quote?.price ?? candles.at(-1)?.close;
+      if (price === undefined) return;
+      const frameTime = performance.now();
+      if (targetPrice !== price) {
+        fromPrice = shownPrice || price;
+        targetPrice = price;
+        tweenStart = frameTime;
+      }
+      shownPrice = motion.matches ? price : fromPrice + (price - fromPrice) * evalBezier(Math.min(1, (frameTime - tweenStart) / CHART_ANIM_MS));
+      const centerY = height / 2;
+      const trailEnd = Math.max(EDGE + 40, width - EDGE - LABEL_RESERVE);
+      const end = live ? (motion.matches ? now : Date.now()) : (quote?.time ?? now);
+      const pxPerSecond = windowMinutes ? (trailEnd - EDGE) / (windowMinutes * 60) : FLOW_PX_PER_SEC;
+      const start = end - (trailEnd - EDGE) / pxPerSecond * 1_000;
+      // Retain the observation immediately before the viewport for a continuous entry.
+      let first = candles.findIndex((point) => point.time * 1_000 >= start);
+      first = first < 0 ? Math.max(0, candles.length - 1) : Math.max(0, first - 1);
+      const visible = candles.slice(first);
+      let spacing = tickSpacingFor(shownPrice);
+      if (windowMinutes) {
+        // Longer history remains readable while retaining the same 44px price tape.
+        const halfRange = Math.max(spacing, ...visible.map((point) => Math.abs(point.close - shownPrice)));
+        spacing = Math.max(spacing, Math.ceil(halfRange * 2.3 / height * TICK_PX * 100) / 100);
+      }
+      const yFor = (value: number) => centerY - (value - shownPrice) / spacing * TICK_PX;
+      const xFor = (time: number) => trailEnd - (end - time) / 1_000 * pxPerSecond;
+      const anchor = Math.round(shownPrice / spacing) * spacing;
+      const rows = Math.ceil(height / (2 * TICK_PX)) + 1;
+      const decimals = labelDecimalsFor(spacing, shownPrice);
+      ctx.font = '13px "Bloxwap Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(161,161,161,0.35)';
+      ctx.fillStyle = 'rgba(161,161,161,0.75)';
+      ctx.beginPath();
+      for (let i = -rows; i <= rows; i++) {
+        const value = anchor + i * spacing;
+        const y = yFor(value);
+        ctx.moveTo(EDGE - 8, y); ctx.lineTo(EDGE, y);
+        ctx.moveTo(width - EDGE, y); ctx.lineTo(width - EDGE + 8, y);
+        if (Math.abs(y - centerY) > 25) ctx.fillText(value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }), width - 32, y);
+      }
+      ctx.stroke();
+      const path: [number, number][] = visible.map((point) => [xFor(point.time * 1_000), yFor(point.close)]);
+      // The endpoint is the last observed book price. Only the display geometry is tweened.
+      if (quote) path.push([xFor(quote.time), yFor(quote.price)]);
+      const distinct = path.filter((point, index) => index === 0 || point[0] > path[index - 1][0]);
+      if (!distinct.length) return;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(EDGE, 0, trailEnd - EDGE, height); ctx.clip();
+      // This renderer is installed on our browser canvas; the SDK's portable context
+      // interface omits gradients used by the web trading screen.
+      const gradient = (ctx as CanvasRenderingContext2D).createLinearGradient(EDGE, 0, trailEnd, 0);
+      const rgb = live ? '0,255,63' : '161,161,161';
+      gradient.addColorStop(0, `rgba(${rgb},0)`);
+      gradient.addColorStop(1, `rgba(${rgb},1)`);
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      writeSmoothPath(distinct, {
+        moveTo: (x, y) => ctx.moveTo(x, y),
+        lineTo: (x, y) => ctx.lineTo(x, y),
+        cubicTo: (a, b, c, d, x, y) => ctx.bezierCurveTo(a, b, c, d, x, y),
+      });
+      if (quote) {
+        const [x, y] = distinct.at(-1)!;
+        const dx = Math.max(0, trailEnd - x);
+        ctx.bezierCurveTo(x + dx / 3, y, trailEnd - dx / 3, centerY, trailEnd, centerY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
     const chart = createChart({
-      container: canvas, preset: 'bloxwapDark',
+      container: canvas, preset: 'bloxwapDark', crosshairCache: false,
+      registries: { series: createSeriesRegistry().register('altimeter', draw) },
       config: {
-        series: { type: 'line', lineColor: '#00ff3f', lineWidth: 2 },
-        theme: { background: '#101010', textColor: '#757575', borderColor: '#101010', monoFamily: 'Bloxwap Mono, monospace' },
+        series: { type: 'altimeter' },
+        theme: { background: 'transparent', monoFamily: 'Bloxwap Mono, monospace' },
         priceAxis: { visible: false, labels: { lastPrice: false, highLow: false, indicator: false, countdown: false }, lines: { lastPrice: false, previousClose: false, highLow: false } },
-        timeAxis: { visible: false },
-        timeScale: { continuous: true, intervalMs: 1_000 },
-        grid: { visible: false }, crosshair: { visible: false },
+        timeAxis: { visible: false }, grid: { visible: false }, crosshair: { visible: false },
         statusLine: { visible: false }, watermark: { visible: false },
       },
     });
     chartRef.current = chart;
-    const labels = Array.from({ length: 15 }, () => {
-      const label = document.createElement('span');
-      label.className = 'ruler-tick';
-      overlay.append(label);
-      return label;
-    });
-    const dot = document.createElement('span');
-    dot.className = 'chart-dot';
-    overlay.append(dot);
-    const paint = () => {
-      const { points, quote, windowMinutes, live, now } = latest.current;
-      if (!points.length || host.clientHeight === 0) return;
-      const width = host.clientWidth, height = host.clientHeight;
-      const color = live ? '#00ff3f' : '#777777';
-      const price = quote?.price ?? points.at(-1)!.close;
-      const end = now / 1_000;
-      const span = windowMinutes * 60;
-      // The SDK's minimum slot width is 0.5px. Bucket actual observations so the entire
-      // selected time window fits even on a phone, without stretching sparse history.
-      const interval = Math.max(1, Math.ceil(span * 1.12 / Math.max(width, 1)));
-      const buckets = new Map<number, PricePoint>();
-      for (const point of points) {
-        const time = Math.floor(point.time / interval) * interval;
-        buckets.set(time, { ...point, time });
-      }
-      const sampled = [...buckets.values()];
-      // The last price is pinned vertically, just like an aircraft's altitude tape.
-      chart.batch(() => {
-        chart.updateConfig({ series: { lineColor: color }, priceAxis: { autoScale: true, lockPriceToBarRatio: false }, timeScale: { intervalMs: interval * 1_000 } });
-        chart.setData(sampled);
-        chart.scale.zoomToRange(indexAtTime(sampled, end - span, interval), indexAtTime(sampled, end + span * 0.12, interval));
-      });
-      const visible = sampled.filter((point) => point.time >= end - span - 60);
-      const halfSpan = Math.max(10, ...visible.map((point) => Math.abs(point.close - price))) * 1.15;
-      const fullSpan = Math.abs(chart.scale.yToPrice(0) - chart.scale.yToPrice(height));
-      if (fullSpan > 0) chart.updateConfig({ priceAxis: { lockPriceToBarRatio: true, priceToBarRatio: chart.scale.priceToBarRatio() * (halfSpan * 2 / fullSpan) } });
-      const y = chart.scale.priceToY(price);
-      if (Number.isFinite(y)) chart.scale.scrollPrice(height / 2 - y);
-      const min = chart.scale.yToPrice(height), max = chart.scale.yToPrice(0);
-      const step = tickStep(Math.abs(max - min));
-      const first = Math.ceil(min / step) * step;
-      labels.forEach((label, i) => {
-        const value = first + i * step;
-        const top = chart.scale.priceToY(value);
-        label.hidden = value > max || !Number.isFinite(top) || Math.abs(top - height / 2) < 18;
-        label.style.transform = `translateY(${top}px)`;
-        label.textContent = value.toLocaleString('en-US', { maximumFractionDigits: 0 });
-      });
-      const x = chart.scale.indexToX(sampled.length - 1);
-      dot.style.transform = `translate(${Math.min(width, Math.max(0, x))}px, ${height / 2}px)`;
-      dot.style.backgroundColor = color;
-      dot.hidden = !quote || x < 0 || x > width;
-    };
-    paintRef.current = paint;
     const resize = () => {
-      chart.resize(host.clientWidth, host.clientHeight, Math.min(window.devicePixelRatio || 1, 2));
-      paint();
+      width = host.clientWidth; height = host.clientHeight;
+      chart.resize(width, height, Math.min(window.devicePixelRatio || 1, 2));
     };
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     resize();
-    void document.fonts.ready.then(() => { if (chartRef.current === chart) paint(); });
-    return () => {
-      observer.disconnect();
-      chartRef.current = null;
-      paintRef.current = () => {};
-      chart.destroy();
-      overlay.replaceChildren();
+    let frame = 0, lastFrame = 0;
+    const animate = (time: number) => {
+      // Continuous flow is capped at 30fps; hidden views do no canvas work.
+      if (!document.hidden && !motion.matches && time - lastFrame >= 1_000 / 30) {
+        chart.render(); lastFrame = time;
+      }
+      frame = requestAnimationFrame(animate);
     };
+    frame = requestAnimationFrame(animate);
+    void document.fonts.ready.then(() => { if (chartRef.current === chart) chart.render(); });
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); chartRef.current = null; chart.destroy(); };
   }, []);
 
-  useEffect(() => { paintRef.current(); }, [points, quote, windowMinutes, live, now]);
-
-  return (
-    <section className="chart-region" aria-label={`Bitcoin price chart, last ${windowMinutes} minutes`}>
-      <div className="chart-reference" aria-hidden="true" />
-      <div className="chart-plot">
-        <canvas ref={canvasRef} aria-label="Live Bitcoin price history" role="img" />
-        <div ref={overlayRef} className="chart-overlay" aria-hidden="true" />
-      </div>
-      <span className="current-marker" aria-hidden="true">{quote ? quote.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</span>
-      {!points.length && <span className="chart-empty">Waiting for market data</span>}
-      <div className="chart-times" aria-hidden="true"><span>−{windowMinutes} MIN</span><span>NOW</span></div>
-    </section>
-  );
+  useEffect(() => { chartRef.current?.setData(points); }, [points]);
+  useEffect(() => { chartRef.current?.render(); }, [quote, windowMinutes, live, now]);
+  const summary = quote
+    ? `Bitcoin ${quote.price.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. ${live ? 'Live Hyperliquid bid/ask midpoint.' : 'Last observed price; feed is not live.'}`
+    : 'Waiting for a live Bitcoin price. The trail shows available price observations.';
+  return <section className="chart-region" aria-label={`Bitcoin price chart, ${windowMinutes ? `last ${windowMinutes} minutes` : 'live view'}`} aria-describedby="chart-summary">
+    <p id="chart-summary" className="sr-only">{summary}</p>
+    <div className="chart-plot"><canvas ref={canvasRef} aria-label="Bitcoin price trail and altitude scale" role="img" /></div>
+    <div className="current-marker" aria-hidden="true">
+      {quote ? <NumberFlow value={quote.price} locales="en-US" format={{ style: 'currency', currency: 'USD' }} transformTiming={{ duration: 300, easing: 'ease-in-out' }} /> : '—'}
+    </div>
+    {!points.length && <span className="chart-empty">Waiting for market data</span>}
+  </section>;
 }

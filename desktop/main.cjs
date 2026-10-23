@@ -30,7 +30,7 @@ function openExternal(url) {
 function makeWindow(options = {}) {
   const window = new BrowserWindow({
     width: 1440, height: 900, minWidth: 360, minHeight: 580,
-    backgroundColor: '#101010', title: 'Bloxwap Screensaver', show: false,
+    backgroundColor: '#0a0a0a', title: 'Bloxwap Screensaver', show: false,
     autoHideMenuBar: true,
     ...options,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true },

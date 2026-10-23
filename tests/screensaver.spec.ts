@@ -38,9 +38,9 @@ test('SDK updates price and chart, QR points to BTC, and install controls work',
   const feed = await mockMarket(page);
   await page.goto('/');
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67001.50 US dollars');
-  await expect(page.getByRole('status')).toContainText('LIVE');
+  await expect(page.getByRole('status')).toContainText('Live');
   await expect(page.getByRole('link', { name: 'Open Bitcoin on Bloxwap', exact: true })).toHaveAttribute('href', 'https://bloxwap.app/trade/BTC');
-  await expect(page.locator('.chart-dot')).toBeVisible();
+  await expect(page.locator('.current-marker')).toBeVisible();
   feed.sendBook(67025.5, Date.now() + 1_000);
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67025.50 US dollars');
   // A delayed network frame cannot move the display backwards.
@@ -49,9 +49,13 @@ test('SDK updates price and chart, QR points to BTC, and install controls work',
   await page.getByRole('button', { name: '1H', exact: true }).click();
   await expect(page.getByRole('region', { name: /last 60 minutes/ })).toBeVisible();
   await expect(page.getByRole('button', { name: '1H', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  const dot = await page.locator('.chart-dot').boundingBox();
+  const marker = await page.locator('.current-marker').boundingBox();
   const plot = await page.locator('.chart-plot').boundingBox();
-  expect(dot!.x - plot!.x).toBeGreaterThan(plot!.width * 0.8);
+  expect(marker!.x + marker!.width).toBeCloseTo(plot!.width - 8, 0);
+  expect(marker!.y + marker!.height / 2).toBeCloseTo(plot!.height / 2, 0);
+  await expect(page.locator('.price-pill img')).toHaveAttribute('src', /brand\/BTC.svg$/);
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await expect(page.getByRole('region', { name: /live view/ })).toBeVisible();
   await page.getByRole('button', { name: /Install/ }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: 'Close installation instructions' }).click();
@@ -72,14 +76,14 @@ test('server-delayed prices are never labeled live', async ({ page }) => {
   await mockMarket(page, { stale: true });
   await page.goto('/');
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67001.50 US dollars');
-  await expect(page.getByRole('status')).toContainText('PRICE DELAYED');
+  await expect(page.getByRole('status')).toContainText('Price delayed');
   await expect(page.locator('.stale-label')).toContainText('Last update');
 });
 
 test('history failure does not prevent fresh streaming prices', async ({ page }) => {
   await mockMarket(page, { historyFails: true });
   await page.goto('/');
-  await expect(page.getByRole('status')).toContainText('LIVE');
+  await expect(page.getByRole('status')).toContainText('Live');
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67001.50 US dollars');
   await expect(page.locator('.history-note')).toBeVisible({ timeout: 20_000 });
 });
@@ -87,10 +91,10 @@ test('history failure does not prevent fresh streaming prices', async ({ page })
 test('disconnect preserves the last price; reconnect restores streaming', async ({ page }) => {
   const feed = await mockMarket(page);
   await page.goto('/');
-  await expect(page.getByRole('status')).toContainText('LIVE');
+  await expect(page.getByRole('status')).toContainText('Live');
   await page.context().setOffline(true);
   feed.close();
-  await expect(page.getByRole('status')).toContainText('OFFLINE');
+  await expect(page.getByRole('status')).toContainText('Offline');
   await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67001.50 US dollars');
   await page.context().setOffline(false);
   await expect(page.locator('.screensaver.is-live')).toBeVisible({ timeout: 20_000 });
