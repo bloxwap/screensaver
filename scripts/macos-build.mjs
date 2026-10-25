@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmod, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { artifactNames, desktopOptions, parseDesktopArgs } from './lib/desktop-config.cjs';
 
@@ -13,6 +14,21 @@ function execute(command, args, options = {}) {
     throw new Error(`${command} failed (${result.status ?? result.error?.code ?? 'unknown'}): ${String(result.stderr || result.stdout || '').trim()}`);
   }
   return String(result.stdout ?? '').trim();
+}
+
+export async function verifyDiskImage(image, { run = execute, pause = delay, report = console.warn } = {}) {
+  const waits = [1000, 2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return run('hdiutil', ['verify', image]);
+    } catch (error) {
+      // DiskImages may briefly retain the newly created image on CI runners.
+      // Corrupt images and other errors must fail immediately, without retries.
+      if (!String(error.message).includes('Resource temporarily unavailable') || attempt === waits.length) throw error;
+      report(`Disk image verification attempt ${attempt + 1}/${waits.length + 1} will retry in ${waits[attempt]}ms: ${error.message}`);
+      await pause(waits[attempt]);
+    }
+  }
 }
 
 export function macOSBuildPlan(input = {}) {
@@ -151,7 +167,7 @@ export async function buildMacOS(input = {}) {
     const [dmg, zip] = artifactNames(plan).map((filename) => path.join(plan.outputDirectory, filename));
     execute('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', plan.bundle, zip]);
     execute('hdiutil', ['create', '-volname', plan.productName, '-srcfolder', archiveDirectory, '-format', 'UDZO', '-ov', dmg]);
-    execute('hdiutil', ['verify', dmg]);
+    await verifyDiskImage(dmg);
     execute('unzip', ['-tq', zip]);
     return [dmg, zip];
   };

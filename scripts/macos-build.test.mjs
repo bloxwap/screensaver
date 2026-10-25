@@ -3,9 +3,47 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { bundleMetadata, macOSBuildPlan, metadataPlist, swiftArguments } from './macos-build.mjs';
+import { bundleMetadata, macOSBuildPlan, metadataPlist, swiftArguments, verifyDiskImage } from './macos-build.mjs';
 
 const catalog = JSON.parse(await readFile(new URL('../config/assets.json', import.meta.url), 'utf8'));
+
+test('disk image verification retries only temporary resource errors and still requires verification to succeed', async () => {
+  const calls = [];
+  const waits = [];
+  const reports = [];
+  const transient = new Error('hdiutil: verify failed - Resource temporarily unavailable');
+  const result = await verifyDiskImage('/output/bitcoin.dmg', {
+    run: (command, args) => {
+      calls.push([command, args]);
+      if (calls.length < 3) throw transient;
+      return 'verified';
+    },
+    pause: async (milliseconds) => { waits.push(milliseconds); },
+    report: (message) => { reports.push(message); },
+  });
+  assert.equal(result, 'verified');
+  assert.deepEqual(calls, Array.from({ length: 3 }, () => ['hdiutil', ['verify', '/output/bitcoin.dmg']]));
+  assert.deepEqual(waits, [1000, 2000]);
+  assert.equal(reports.length, 2);
+  assert.ok(reports.every((message) => message.includes(transient.message)));
+
+  let attempts = 0;
+  const exhaustedWaits = [];
+  await assert.rejects(verifyDiskImage('/output/busy.dmg', {
+    run: () => { attempts++; throw transient; },
+    pause: async (milliseconds) => { exhaustedWaits.push(milliseconds); },
+    report: () => {},
+  }), (error) => error === transient);
+  assert.equal(attempts, 4);
+  assert.deepEqual(exhaustedWaits, [1000, 2000, 4000]);
+
+  const corrupt = new Error('hdiutil: verify failed - image data corrupted');
+  await assert.rejects(verifyDiskImage('/output/corrupt.dmg', {
+    run: () => { throw corrupt; },
+    pause: () => assert.fail('Permanent verification failures must not retry.'),
+    report: () => assert.fail('Permanent verification failures must not retry.'),
+  }), (error) => error === corrupt);
+});
 
 test('all Mac editions use distinct plugin classes and bundles while preserving public artifact identities', () => {
   const principalClasses = new Set();

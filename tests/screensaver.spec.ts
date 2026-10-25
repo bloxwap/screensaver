@@ -548,7 +548,9 @@ for (const asset of [
     await expect(page).toHaveTitle(`Bloxwap Screensaver · ${asset.name}`);
     await expect(page.locator('.asset-symbol')).toHaveText(asset.name);
     await expect(page.locator('.asset-pill img')).toHaveAttribute('src', `./brand/${asset.symbol}.svg`);
-    await expect(page.getByRole('link', { name: `Open ${asset.name} on Bloxwap`, exact: true })).toHaveAttribute('href', `https://bloxwap.app/trade/${asset.symbol}`);
+    // Native Settings thumbnails hide the QR at compact sizes; its destination
+    // remains edition-specific whenever the QR is shown in a larger preview.
+    await expect(page.getByRole('link', { name: `Open ${asset.name} on Bloxwap`, exact: true, includeHidden: true })).toHaveAttribute('href', `https://bloxwap.app/trade/${asset.symbol}`);
     await expect.poll(() => feed.subscriptions.filter((entry) => entry.type === 'l2Book').length).toBe(1);
     expect(feed.subscriptions.map((entry) => entry.coin)).toEqual([asset.symbol, asset.symbol]);
 
@@ -586,4 +588,79 @@ test('native-looking URL parameters cannot activate the native host', async ({ p
   await expect(page.getByRole('navigation', { name: 'Screensaver controls' })).toHaveCSS('opacity', '1');
   await expect(page.getByRole('button', { name: /Install/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enter full screen' })).toBeVisible();
+});
+
+for (const asset of [
+  { symbol: 'BTC', name: 'Bitcoin', price: 67001.5 },
+  { symbol: 'SOL', name: 'Solana', price: 154.25 },
+  { symbol: 'ETH', name: 'Ethereum', price: 3412.75 },
+  { symbol: 'HYPE', name: 'Hyperliquid', price: 38.45 },
+]) {
+  test(`${asset.symbol} native Settings thumbnail keeps the quote and chart clear at compact sizes`, async ({ page }, info) => {
+    await page.addInitScript((symbol) => {
+      Object.defineProperty(window, 'nativeScreensaver', { value: Object.freeze({ asset: symbol, isPreview: true }) });
+    }, asset.symbol);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await mockMarket(page, { symbol: asset.symbol, price: asset.price });
+    await page.setViewportSize({ width: 320, height: 240 });
+    await page.goto('/');
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-native-preview', 'true');
+    await expect(page.getByTestId('price')).toHaveAttribute('aria-label', `${asset.name} ${asset.price.toFixed(2)} US dollars`);
+    await expect(page.getByRole('status')).toContainText('Live');
+
+    for (const height of [240, 180]) {
+      await page.setViewportSize({ width: 320, height });
+      await expect(page.locator('.asset-symbol')).toBeVisible();
+      await expect(page.locator('.connection')).toBeVisible();
+      await expect(page.getByTestId('price')).toBeVisible();
+      await expect(page.locator('.chart-plot canvas').first()).toBeVisible();
+      await expect(page.locator('.qr-block')).not.toBeVisible();
+      const layout = await page.evaluate(() => {
+        const bounds = (selector: string) => {
+          const rect = document.querySelector(selector)!.getBoundingClientRect();
+          return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+        };
+        return { asset: bounds('.asset-pill'), status: bounds('.connection'), price: bounds('.current-marker'),
+          chart: bounds('.chart-plot canvas'), screen: bounds('.screensaver') };
+      });
+      for (const [name, bounds] of Object.entries(layout)) {
+        expect(bounds.width, `${name} has width at 320×${height}`).toBeGreaterThan(0);
+        expect(bounds.height, `${name} has height at 320×${height}`).toBeGreaterThan(0);
+        expect(bounds.x, `${name} left edge at 320×${height}`).toBeGreaterThanOrEqual(-0.5);
+        expect(bounds.y, `${name} top edge at 320×${height}`).toBeGreaterThanOrEqual(-0.5);
+        expect(bounds.right, `${name} right edge at 320×${height}`).toBeLessThanOrEqual(320.5);
+        expect(bounds.bottom, `${name} bottom edge at 320×${height}`).toBeLessThanOrEqual(height + 0.5);
+      }
+      const separate = (a: typeof layout.asset, b: typeof layout.asset) =>
+        a.right <= b.x || b.right <= a.x || a.bottom <= b.y || b.bottom <= a.y;
+      expect(separate(layout.asset, layout.status), 'asset and status must not overlap').toBe(true);
+      expect(separate(layout.asset, layout.price), 'asset header and main quote must not overlap').toBe(true);
+      expect(separate(layout.status, layout.price), 'connection status and main quote must not overlap').toBe(true);
+      await page.screenshot({ path: info.outputPath(`${asset.symbol.toLowerCase()}-native-settings-${height}.png`) });
+    }
+  });
+}
+
+test('compact browser previews retain the browser QR presentation', async ({ page }) => {
+  await mockMarket(page);
+  await page.setViewportSize({ width: 320, height: 240 });
+  await page.goto('/?isPreview=true&nativeScreensaver=true');
+  await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67001.50 US dollars');
+  await expect(page.locator('.screensaver')).toHaveAttribute('data-host', 'browser');
+  expect(await page.locator('.screensaver').getAttribute('data-native-preview')).toBeNull();
+  await expect(page.locator('.qr-block')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Bitcoin on Bloxwap', exact: true })).toBeVisible();
+});
+
+test('full native display keeps its QR outside the Settings thumbnail mode', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'nativeScreensaver', { value: Object.freeze({ asset: 'BTC', isPreview: false }) });
+  });
+  await mockMarket(page);
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.goto('/');
+  await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Bitcoin 67001.50 US dollars');
+  await expect(page.locator('.screensaver')).toHaveAttribute('data-native-preview', 'false');
+  await expect(page.locator('.qr-block')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Bitcoin on Bloxwap', exact: true })).toBeVisible();
 });

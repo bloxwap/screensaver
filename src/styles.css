@@ -114,4 +114,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (pointer: coarse) { .icon-button, .toast button, .preview-return { min-height: 48px; min-width: 48px; } .display-controls button { min-height: 48px; } }
 @media (max-width: 360px) { .asset-symbol { display: none; } .display-controls { width: 272px; flex-wrap: wrap; justify-content: center; } .time-controls { flex-basis: 100%; justify-content: center; } }
 @media (max-height: 450px) and (min-width: 651px) { .screensaver { --qr-size: 164px; } .qr-link { --qr-radius: 16px; } }
+/* The native System Settings thumbnail can be shorter than the browser's minimum
+   display height. Keep its market legible without covering the chart with a QR. */
+.screensaver[data-native-preview=true] { min-height: 0; }
+@media (max-width: 480px), (max-height: 320px) {
+  .screensaver[data-native-preview=true] { --chart-scale: .75; }
+  .screensaver[data-native-preview=true] .qr-block { display: none; }
+  .screensaver[data-native-preview=true] .asset-pill { height: 28px; gap: 5px; padding: 3px 8px 3px 3px; }
+  .screensaver[data-native-preview=true] .asset-pill img { width: 20px; height: 20px; flex-basis: 20px; }
+  .screensaver[data-native-preview=true] .asset-symbol { display: block; font-size: 11px; letter-spacing: 0; }
+  .screensaver[data-native-preview=true] .asset-symbol::after { margin-left: 5px; }
+  .screensaver[data-native-preview=true] .asset-price { font-size: 11px; }
+  .screensaver[data-native-preview=true] .connection { min-height: 28px; gap: 5px; padding: 0 8px; }
+  .screensaver[data-native-preview=true] .connection-status { font-size: 9px; letter-spacing: 0; }
+  .screensaver[data-native-preview=true] .connection-source { display: none; }
+  .screensaver[data-native-preview=true] .current-marker { min-height: 40px; font-size: clamp(18px, 7vw, 26px); }
+  .screensaver[data-native-preview=true] .market-notes { top: 44px; font-size: 9px; gap: 3px; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }

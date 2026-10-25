@@ -25,10 +25,10 @@ export default function App() {
 
   // Recreate display state when browser navigation changes editions, including the
   // eased chart trail, so a previous asset's readout cannot flash under a new name.
-  return <AssetScreensaver key={asset.symbol} asset={asset} nativeHost={Boolean(nativeHost)} />;
+  return <AssetScreensaver key={asset.symbol} asset={asset} nativeHost={Boolean(nativeHost)} nativePreview={nativeHost?.isPreview === true} />;
 }
 
-function AssetScreensaver({ asset, nativeHost }: { asset: Asset; nativeHost: boolean }) {
+function AssetScreensaver({ asset, nativeHost, nativePreview }: { asset: Asset; nativeHost: boolean; nativePreview: boolean }) {
   const market = useMarket(asset);
   const display = useDisplay();
   const [minutes, setMinutes] = useState(0);
@@ -52,7 +52,7 @@ function AssetScreensaver({ asset, nativeHost }: { asset: Asset; nativeHost: boo
     return () => { window.removeEventListener('beforeinstallprompt', capture); window.removeEventListener('appinstalled', installed); };
   }, [nativeHost]);
 
-  return <main className={`screensaver ${live ? 'is-live' : 'is-waiting'} ${display.controls || installOpen ? 'controls-visible' : ''} ${display.automatic ? 'automatic' : ''} ${browserPreview ? 'browser-preview' : ''}`} data-asset={asset.symbol} data-host={nativeHost ? 'native' : window.screensaver ? 'desktop' : 'browser'}>
+  return <main className={`screensaver ${live ? 'is-live' : 'is-waiting'} ${display.controls || installOpen ? 'controls-visible' : ''} ${display.automatic ? 'automatic' : ''} ${browserPreview ? 'browser-preview' : ''}`} data-asset={asset.symbol} data-host={nativeHost ? 'native' : window.screensaver ? 'desktop' : 'browser'} data-native-preview={nativeHost ? String(nativePreview) : undefined}>
     <h1 className="sr-only">Bloxwap {asset.name} screensaver</h1>
     <div className="grid-bg" aria-hidden="true" />
     <Suspense fallback={<div className="chart-region" />}><LiveChart asset={asset} points={market.points} quote={market.quote} windowMinutes={minutes} live={live} now={display.now} /></Suspense>

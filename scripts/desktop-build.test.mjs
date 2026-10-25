@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
+import { finished } from 'node:stream/promises';
 import { artifactNames, desktopConfig, desktopOptions, parseDesktopArgs, SUPPORTED_ARCHITECTURES } from './lib/desktop-config.cjs';
 import { stageDesktop } from './stage-desktop.mjs';
 
@@ -12,6 +13,12 @@ const { verifyDesktopArchive } = require('./verify-desktop.cjs');
 const asar = createRequire(require.resolve('app-builder-lib'))('@electron/asar');
 
 const catalog = JSON.parse(await readFile(new URL('../config/assets.json', import.meta.url), 'utf8'));
+
+async function createFinishedArchive(source, archive) {
+  // ASAR 3 resolves after calling out.end(), before its buffered writes finish.
+  // Await the returned writable before reading or replacing the real archive.
+  await finished(await asar.createPackage(source, archive));
+}
 
 test('every supported edition/architecture has a unique artifact, application identity, and staging directory', () => {
   const artifacts = new Set();
@@ -129,7 +136,7 @@ test('post-pack verification accepts Windows/POSIX archive listings and rejects 
   for (const name of ['trayTemplate.png', 'brand/ETH.svg', 'brand/BloxwapSans-Variable.woff2', 'brand/BloxwapMono-Variable.woff2', 'assets/index.js']) await writeFile(path.join(projectRoot, 'dist', name), 'fixture');
   const options = await stageDesktop({ projectRoot, asset: 'ETH', platform: 'linux', arch: 'x64' });
   const archive = path.join(projectRoot, 'app.asar');
-  await asar.createPackage(options.stageDirectory, archive);
+  await createFinishedArchive(options.stageDirectory, archive);
   assert.equal(verifyDesktopArchive(archive, options).asset, 'ETH');
 
   // Exercise both ASAR host formats on every runner, so macOS/Linux tests also
@@ -144,11 +151,11 @@ test('post-pack verification accepts Windows/POSIX archive listings and rejects 
   const editionFile = path.join(options.stageDirectory, 'desktop/edition.json');
   const original = await readFile(editionFile);
   await writeFile(editionFile, JSON.stringify({ symbol: 'BTC', name: 'Bitcoin', slug: 'bitcoin' }));
-  await asar.createPackage(options.stageDirectory, archive);
+  await createFinishedArchive(options.stageDirectory, archive);
   assert.throws(() => verifyDesktopArchive(archive, options), /edition metadata does not match/);
 
   await writeFile(editionFile, original);
   await rm(path.join(options.stageDirectory, 'dist/assets/index.js'));
-  await asar.createPackage(options.stageDirectory, archive);
+  await createFinishedArchive(options.stageDirectory, archive);
   assert.throws(() => verifyDesktopArchive(archive, options), /references a missing file/);
 });
