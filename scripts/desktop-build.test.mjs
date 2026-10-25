@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
+import { finished } from 'node:stream/promises';
 import { artifactNames, desktopConfig, desktopOptions, parseDesktopArgs, SUPPORTED_ARCHITECTURES } from './lib/desktop-config.cjs';
 import { stageDesktop } from './stage-desktop.mjs';
 
@@ -13,6 +14,12 @@ const asar = createRequire(require.resolve('app-builder-lib'))('@electron/asar')
 
 const catalog = JSON.parse(await readFile(new URL('../config/assets.json', import.meta.url), 'utf8'));
 
+async function createFinishedArchive(source, archive) {
+  // ASAR 3 resolves after calling out.end(), before its buffered writes finish.
+  // Await the returned writable before reading or replacing the real archive.
+  await finished(await asar.createPackage(source, archive));
+}
+
 test('every supported edition/architecture has a unique artifact, application identity, and staging directory', () => {
   const artifacts = new Set();
   const stages = new Set();
@@ -21,12 +28,17 @@ test('every supported edition/architecture has a unique artifact, application id
     for (const [platform, architectures] of Object.entries(SUPPORTED_ARCHITECTURES)) {
       for (const arch of architectures) {
         const options = desktopOptions({ asset: asset.symbol, platform, arch }, {});
-        const config = desktopConfig(options, {});
-        assert.equal(config.extraMetadata.screensaverAsset, asset.symbol);
-        assert.equal(config.appId, `com.bloxwap.screensaver.${asset.slug}`);
-        assert.equal(config.productName, `Bloxwap ${asset.name} Screensaver`);
-        assert.equal(config.directories.app, options.stageDirectory);
-        assert.ok(config.files.includes('desktop/edition.json'));
+        if (platform === 'macos') {
+          assert.throws(() => desktopConfig(options, {}), /native \.saver bundle/);
+        } else {
+          const config = desktopConfig(options, {});
+          assert.equal(config.extraMetadata.screensaverAsset, asset.symbol);
+          assert.equal(config.appId, `com.bloxwap.screensaver.${asset.slug}`);
+          assert.equal(config.productName, `Bloxwap ${asset.name} Screensaver`);
+          assert.equal(config.directories.app, options.stageDirectory);
+          assert.ok(config.files.includes('desktop/edition.json'));
+          assert.equal(config.mac, undefined);
+        }
         assert.ok(!stages.has(options.stageDirectory));
         stages.add(options.stageDirectory);
         appIds.add(options.appId);
@@ -55,18 +67,11 @@ test('unsupported targets and malformed options fail instead of silently buildin
   assert.deepEqual(parseDesktopArgs(['--asset=SOL', '--arch', 'x64', '--dir', '--skip-build']), { asset: 'SOL', arch: 'x64', dir: true, skipBuild: true });
 });
 
-test('preview and stable configuration have explicit signing/notarization policies', () => {
-  const input = { asset: 'BTC', platform: 'macos', arch: 'arm64' };
+test('Windows preview and stable configuration have explicit signing policies', () => {
+  const input = { asset: 'BTC', platform: 'windows', arch: 'x64' };
   const preview = desktopConfig({ ...input, channel: 'preview' }, {});
-  assert.equal(preview.mac.identity, '-');
-  assert.equal(preview.mac.hardenedRuntime, false);
-  assert.equal(preview.mac.notarize, false);
-  assert.equal(preview.mac.forceCodeSigning, false);
   assert.equal(preview.win.forceCodeSigning, false);
   const stable = desktopConfig({ ...input, channel: 'stable' }, {});
-  assert.equal(stable.mac.forceCodeSigning, true);
-  assert.equal(stable.mac.notarize, true);
-  assert.equal(stable.mac.hardenedRuntime, true);
   assert.equal(stable.win.forceCodeSigning, true);
   assert.deepEqual(stable.win.signtoolOptions.signingHashAlgorithms, ['sha256']);
 });
@@ -89,7 +94,7 @@ async function fixture(t) {
 
 test('staging writes immutable edition metadata without dependencies/docs and does not erase another edition', async (t) => {
   const projectRoot = await fixture(t);
-  const bitcoin = await stageDesktop({ projectRoot, asset: 'BTC', platform: 'macos', arch: 'arm64' });
+  const bitcoin = await stageDesktop({ projectRoot, asset: 'BTC', platform: 'linux', arch: 'x64' });
   const solana = await stageDesktop({ projectRoot, asset: 'SOL', platform: 'windows', arch: 'x64' });
   const [btc, sol] = await Promise.all([bitcoin, solana].map(async (options) => ({
     edition: JSON.parse(await readFile(path.join(options.stageDirectory, 'desktop/edition.json'), 'utf8')),
@@ -110,13 +115,14 @@ test('staging writes immutable edition metadata without dependencies/docs and do
   }
   // Rebuilding one edition must remove its stale staged files while preserving the other.
   await writeFile(path.join(bitcoin.stageDirectory, 'stale-file'), 'old');
-  await stageDesktop({ projectRoot, asset: 'BTC', platform: 'macos', arch: 'arm64' });
+  await stageDesktop({ projectRoot, asset: 'BTC', platform: 'linux', arch: 'x64' });
   assert.ok(!(await readdir(bitcoin.stageDirectory)).includes('stale-file'));
   assert.equal(JSON.parse(await readFile(path.join(solana.stageDirectory, 'desktop/edition.json'), 'utf8')).symbol, 'SOL');
 });
 
 test('staging refuses a missing renderer instead of packaging an empty app', async (t) => {
   const projectRoot = await fixture(t);
+  await assert.rejects(stageDesktop({ projectRoot, asset: 'BTC', platform: 'macos', arch: 'arm64' }), /native \.saver bundle/);
   await rm(path.join(projectRoot, 'dist/index.html'));
   await assert.rejects(stageDesktop({ projectRoot, asset: 'ETH', platform: 'linux', arch: 'x64' }), /Missing dist\/index.html/);
 });
@@ -130,7 +136,7 @@ test('post-pack verification accepts Windows/POSIX archive listings and rejects 
   for (const name of ['trayTemplate.png', 'brand/ETH.svg', 'brand/BloxwapSans-Variable.woff2', 'brand/BloxwapMono-Variable.woff2', 'assets/index.js']) await writeFile(path.join(projectRoot, 'dist', name), 'fixture');
   const options = await stageDesktop({ projectRoot, asset: 'ETH', platform: 'linux', arch: 'x64' });
   const archive = path.join(projectRoot, 'app.asar');
-  await asar.createPackage(options.stageDirectory, archive);
+  await createFinishedArchive(options.stageDirectory, archive);
   assert.equal(verifyDesktopArchive(archive, options).asset, 'ETH');
 
   // Exercise both ASAR host formats on every runner, so macOS/Linux tests also
@@ -145,11 +151,11 @@ test('post-pack verification accepts Windows/POSIX archive listings and rejects 
   const editionFile = path.join(options.stageDirectory, 'desktop/edition.json');
   const original = await readFile(editionFile);
   await writeFile(editionFile, JSON.stringify({ symbol: 'BTC', name: 'Bitcoin', slug: 'bitcoin' }));
-  await asar.createPackage(options.stageDirectory, archive);
+  await createFinishedArchive(options.stageDirectory, archive);
   assert.throws(() => verifyDesktopArchive(archive, options), /edition metadata does not match/);
 
   await writeFile(editionFile, original);
   await rm(path.join(options.stageDirectory, 'dist/assets/index.js'));
-  await asar.createPackage(options.stageDirectory, archive);
+  await createFinishedArchive(options.stageDirectory, archive);
   assert.throws(() => verifyDesktopArchive(archive, options), /references a missing file/);
 });

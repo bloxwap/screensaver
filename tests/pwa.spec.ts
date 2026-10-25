@@ -41,3 +41,35 @@ test('installed Solana edition retains its asset on a cold offline reload', asyn
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /manifest-sol\.webmanifest$/);
   await expect(page.getByRole('link', { name: 'Open Solana on Bloxwap', exact: true })).toHaveAttribute('href', 'https://bloxwap.app/trade/SOL');
 });
+
+for (const isPreview of [false, true]) {
+  test(`native host ${isPreview ? 'preview' : 'display'} never registers a service worker`, async ({ page }) => {
+    await page.addInitScript((isPreview) => {
+      Object.defineProperty(window, 'nativeScreensaver', { value: Object.freeze({ asset: 'SOL', isPreview }) });
+    }, isPreview);
+    await page.route('https://api.hyperliquid.xyz/**', (route) => route.abort());
+    await page.routeWebSocket('wss://api.hyperliquid.xyz/ws', (socket) => socket.close());
+    await page.goto('/?asset=BTC');
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-host', 'native');
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-asset', 'SOL');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('link[rel="manifest"]')).toHaveCount(0);
+    expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
+    expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
+    await page.reload();
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-asset', 'SOL');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('link[rel="manifest"]')).toHaveCount(0);
+    expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
+  });
+}
+
+test('native-looking URL parameters retain browser PWA installation', async ({ page }) => {
+  await page.route('https://api.hyperliquid.xyz/**', (route) => route.abort());
+  await page.routeWebSocket('wss://api.hyperliquid.xyz/ws', (socket) => socket.close());
+  await page.goto('/?asset=SOL&mode=native&nativeScreensaver=true&isPreview=true');
+  await expect(page.locator('.screensaver')).toHaveAttribute('data-host', 'browser');
+  const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);
+  expect(scope).toBe(new URL('./', page.url()).href);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /manifest-sol\.webmanifest$/);
+});

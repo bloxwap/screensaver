@@ -31,7 +31,7 @@ function desktopOptions(input = {}, environment = process.env) {
     throw new Error('package.json must contain a valid release version.');
   }
   const electronVersion = metadata.devDependencies?.electron;
-  if (typeof electronVersion !== 'string' || !/^\d+\.\d+\.\d+(?:-[\da-zA-Z.-]+)?$/.test(electronVersion)) {
+  if (platform !== 'macos' && (typeof electronVersion !== 'string' || !/^\d+\.\d+\.\d+(?:-[\da-zA-Z.-]+)?$/.test(electronVersion))) {
     throw new Error('Pin the Electron devDependency to an exact version before packaging.');
   }
   const identity = `bloxwap-screensaver-${asset.slug}`;
@@ -50,6 +50,7 @@ function desktopOptions(input = {}, environment = process.env) {
 
 function desktopConfig(input = {}, environment = process.env) {
   const options = desktopOptions(input, environment);
+  if (options.platform === 'macos') throw new Error('Mac distribution uses a native .saver bundle. Run npm run desktop:dist -- --asset BTC --arch arm64.');
   const artifactName = `${options.artifactPrefix}.\${ext}`;
   const target = (name) => ({ target: name, arch: [options.arch] });
   const stable = options.channel === 'stable';
@@ -65,7 +66,6 @@ function desktopConfig(input = {}, environment = process.env) {
     npmRebuild: false,
     publish: null,
     artifactName,
-    mac: { target: [target('dmg'), target('zip')], category: 'public.app-category.finance', minimumSystemVersion: '13.0', icon: path.join(options.projectRoot, 'public/icon-512.png'), artifactName, hardenedRuntime: stable, entitlements: path.join(options.projectRoot, 'scripts/entitlements.mac.plist'), entitlementsInherit: path.join(options.projectRoot, 'scripts/entitlements.mac.plist'), notarize: stable, forceCodeSigning: stable, ...(stable ? {} : { identity: '-' }) },
     win: { target: [target('nsis')], executableName: options.identity, icon: path.join(options.projectRoot, 'public/icon-512.png'), artifactName, forceCodeSigning: stable, ...(stable ? { signtoolOptions: { signingHashAlgorithms: ['sha256'], rfc3161TimeStampServer: 'http://timestamp.digicert.com' } } : {}) },
     linux: { target: [target('AppImage'), target('deb')], executableName: options.identity, category: 'Utility', icon: path.join(options.projectRoot, 'public/icon-512.png'), maintainer: 'Bloxwap <support@bloxwap.com>', artifactName },
     nsis: { oneClick: false, allowToChangeInstallationDirectory: true, perMachine: false, deleteAppDataOnUninstall: false, uninstallDisplayName: options.productName, artifactName },

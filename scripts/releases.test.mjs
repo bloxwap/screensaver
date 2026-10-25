@@ -4,17 +4,17 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CATALOG, EMPTY_MANIFEST, checksumText, createManifest, expectedDownloads, releaseAssetUrl, releaseResumeState, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
+import { CATALOG, EMPTY_MANIFEST, checksumText, createManifest, downloadKind, expectedDownloads, normalizeManifest, releaseAssetUrl, releaseNotes, releaseResumeState, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
 import { fetchCurrentRelease, fetchReleaseManifest } from './fetch-release.mjs';
 
-const version = '0.1.0';
+const version = '0.2.0';
 const sha = 'a'.repeat(64);
-function manifest(channel = 'preview') {
+function manifest(channel = 'preview', { legacy = false } = {}) {
   const tag = channel === 'stable' ? `v${version}` : `preview-v${version}-abcdef0-1-1`;
   return {
     schemaVersion: 1, version, tag, publishedAt: '2026-10-24T00:00:00.000Z', channel,
     releaseUrl: `https://github.com/bloxwap/screensaver/releases/tag/${tag}`,
-    downloads: expectedDownloads(version).map((entry) => ({ ...entry, url: releaseAssetUrl(tag, entry.filename), size: 1234, sha256: sha, signed: channel === 'stable' && entry.platform !== 'linux' })),
+    downloads: expectedDownloads(version).map((entry) => ({ ...entry, ...(!legacy ? { kind: entry.platform === 'macos' ? 'screensaver' : 'application' } : {}), url: releaseAssetUrl(tag, entry.filename), size: 1234, sha256: sha, signed: channel === 'stable' && entry.platform !== 'linux' })),
   };
 }
 function release(data) {
@@ -48,8 +48,8 @@ async function fixture(t, channel = 'preview') {
     await mkdir(folder, { recursive: true });
     const content = Buffer.from(`test installer ${entry.filename}`);
     await writeFile(join(folder, entry.filename), content);
-    if (!groups.has(key)) groups.set(key, { schemaVersion: 1, platform: entry.platform, channel, files: [] });
-    groups.get(key).files.push({ filename: entry.filename, sha256: createHash('sha256').update(content).digest('hex'), signed: channel === 'stable' && entry.platform !== 'linux', notarized: channel === 'stable', timestamped: channel === 'stable' });
+    if (!groups.has(key)) groups.set(key, { schemaVersion: 1, platform: entry.platform, asset: entry.asset, arch: entry.arch, version, channel, files: [] });
+    groups.get(key).files.push({ filename: entry.filename, sha256: createHash('sha256').update(content).digest('hex'), kind: entry.platform === 'macos' ? 'screensaver' : 'application', ...(entry.platform === 'macos' ? { verification: 'embedded-screensaver' } : {}), signed: channel === 'stable' && entry.platform !== 'linux', notarized: channel === 'stable', timestamped: channel === 'stable' });
   }
   for (const [key, proof] of groups) await writeFile(join(directory, key, 'signing.json'), JSON.stringify(proof));
   return { directory, version, tag: channel === 'stable' ? `v${version}` : `preview-v${version}-test`, channel };
@@ -75,21 +75,60 @@ test('validator rejects partial matrices, false asset labels, duplicate files, u
     (data) => { data.downloads[0].arch = 'universal'; },
     (data) => { data.downloads[0].size = 0; },
     (data) => { data.downloads[0].sha256 = 'not-a-checksum'; },
+    (data) => { data.downloads[0].kind = 'unknown'; },
+    (data) => { data.downloads.find((entry) => entry.platform === 'windows').kind = 'screensaver'; },
+    (data) => { data.downloads[0].kind = 'application'; },
   ];
   for (const edit of edits) { const data = manifest(); edit(data); assert.throws(() => validateManifest(data)); }
   const data = manifest('stable'); data.downloads[0].signed = false;
   assert.throws(() => validateManifest(data), /not signed/);
 });
 
-test('generator hashes actual installers and ignores electron-builder unpacked applications', async (t) => {
+test('legacy manifests remain applications and cannot pass the new native-publication contract', () => {
+  const legacy = manifest('preview', { legacy: true });
+  assert.equal(validateManifest(legacy), legacy);
+  assert.equal(downloadKind(legacy.downloads[0]), 'application');
+  const normalized = normalizeManifest(legacy);
+  assert.ok(normalized.downloads.every((entry) => entry.kind === 'application'));
+  assert.equal(legacy.downloads[0].kind, undefined, 'normalization does not rewrite legacy metadata in place');
+  assert.throws(() => validateManifest(legacy, { requireCurrentKinds: true }), /explicit screensaver kind/);
+  assert.throws(() => validateManifest(normalized, { requireCurrentKinds: true }), /explicit screensaver kind/);
+  assert.equal(validateManifest(manifest(), { requireCurrentKinds: true }).downloads[0].kind, 'screensaver');
+});
+
+test('generator hashes actual downloads and ignores unpacked applications and native screensaver bundles', async (t) => {
   const args = await fixture(t);
   const unpacked = join(args.directory, 'BTC-windows-x64', 'win-unpacked');
   await mkdir(unpacked);
   await writeFile(join(unpacked, 'bloxwap-screensaver-bitcoin.exe'), 'development app');
+  const bundle = join(args.directory, 'BTC-macos-arm64', 'Bloxwap Bitcoin Screensaver.saver', 'Contents', 'Resources');
+  await mkdir(bundle, { recursive: true });
+  await writeFile(join(bundle, 'internal.zip'), 'bundled resource, not a public download');
   const data = await createManifest(args);
   assert.equal(data.downloads.length, 28);
   assert.equal(data.downloads[0].size, Buffer.byteLength(`test installer ${data.downloads[0].filename}`));
   assert.match(checksumText(data), /^[a-f0-9]{64}  bloxwap-screensaver-bitcoin/);
+  assert.ok(data.downloads.filter((entry) => entry.platform === 'macos').every((entry) => entry.kind === 'screensaver'));
+  assert.ok(data.downloads.filter((entry) => entry.platform !== 'macos').every((entry) => entry.kind === 'application'));
+});
+
+test('new releases require actual native-bundle evidence and cannot relabel old Mac application proofs', async (t) => {
+  const args = await fixture(t);
+  const path = join(args.directory, 'BTC-macos-arm64', 'signing.json');
+  const original = JSON.parse(await readFile(path, 'utf8'));
+  for (const change of [
+    (report) => { delete report.files[0].kind; },
+    (report) => { report.files[0].kind = 'application'; },
+    (report) => { report.files[0].verification = 'embedded-application'; },
+    (report) => { delete report.files[0].verification; },
+    (report) => { report.asset = 'ETH'; },
+    (report) => { report.arch = 'x64'; },
+    (report) => { report.version = '0.1.0'; },
+  ]) {
+    const changed = structuredClone(original); change(changed);
+    await writeFile(path, JSON.stringify(changed));
+    await assert.rejects(createManifest(args), /actual screensaver|embedded screensaver evidence|different asset, version, or architecture/);
+  }
 });
 
 test('generator refuses missing and altered artifacts even when the signing report exists', async (t) => {
@@ -110,6 +149,10 @@ test('stable release requires notarization and timestamp proofs for each actual 
   report.files[0].notarized = false;
   await writeFile(path, JSON.stringify(report));
   await assert.rejects(createManifest(args), /not signed and notarized/);
+  report.files[0].notarized = true;
+  report.files[0].verification = 'embedded-application';
+  await writeFile(path, JSON.stringify(report));
+  await assert.rejects(createManifest(args), /embedded screensaver evidence/);
 });
 
 test('uploaded release verification detects missing, renamed, resized, and corrupted files', () => {
@@ -150,14 +193,25 @@ test('publication retries resume only the same draft or an identical public rele
   assert.equal(releaseResumeState(data, draft, { sourceSha }), 'resume-draft');
   assert.throws(() => releaseResumeState(data, { ...draft, target_commitish: 'b'.repeat(40) }, { sourceSha }), /different source commit/);
   const published = { ...release(data), target_commitish: 'main' };
-  assert.equal(releaseResumeState(data, published, { sourceSha, tagCommitSha }), 'verified-public');
+  assert.equal(releaseResumeState(data, published, { sourceSha, tagCommitSha, publishedManifest: data }), 'verified-public');
   assert.throws(() => releaseResumeState(data, published, { sourceSha, tagCommitSha: 'b'.repeat(40) }), /different source commit/);
   assert.throws(() => releaseResumeState(data, { ...published, prerelease: false }, { sourceSha, tagCommitSha }), /different tag or channel/);
   for (const digest of [null, `sha256:${'b'.repeat(64)}`]) {
     const changed = structuredClone(published);
     changed.assets[0].digest = digest;
-    assert.throws(() => releaseResumeState(data, changed, { sourceSha, tagCommitSha }), /unchanged|checksum mismatch/);
+    assert.throws(() => releaseResumeState(data, changed, { sourceSha, tagCommitSha, publishedManifest: data }), /unchanged|checksum mismatch/);
   }
+});
+
+test('public release recovery cannot upgrade legacy app metadata into native screensaver claims', () => {
+  const legacy = manifest('preview', { legacy: true });
+  const claimedNative = manifest();
+  const published = release(legacy);
+  const sourceSha = 'a'.repeat(40);
+  const options = { sourceSha, tagCommitSha: sourceSha, publishedManifest: legacy };
+  assert.equal(releaseResumeState(legacy, published, options), 'verified-public');
+  assert.throws(() => releaseResumeState(claimedNative, published, options), /change the kind or verification metadata/);
+  assert.throws(() => releaseResumeState(legacy, published, { sourceSha, tagCommitSha: sourceSha }), /requires its published manifest/);
 });
 
 test('site refresh prefers stable over newer preview, and accepts preview before first stable release', async () => {
@@ -166,6 +220,26 @@ test('site refresh prefers stable over newer preview, and accepts preview before
   assert.equal((await fetchCurrentRelease({ fetchImpl: mockFetch([preview, stable]) })).tag, stable.tag);
   assert.equal((await fetchCurrentRelease({ fetchImpl: mockFetch([preview]) })).tag, preview.tag);
   assert.equal(await fetchCurrentRelease({ fetchImpl: mockFetch([]) }), null);
+});
+
+test('fetch preserves legacy Mac application meaning and adopts native kind only from the published manifest', async () => {
+  const legacy = manifest('preview', { legacy: true });
+  const oldResult = await fetchReleaseManifest(release(legacy), { fetchImpl: mockFetch([legacy]) });
+  assert.ok(oldResult.downloads.every((entry) => entry.kind === 'application'));
+  const native = manifest();
+  const newResult = await fetchReleaseManifest(release(native), { fetchImpl: mockFetch([native]) });
+  assert.ok(newResult.downloads.filter((entry) => entry.platform === 'macos').every((entry) => entry.kind === 'screensaver'));
+  assert.ok(newResult.downloads.filter((entry) => entry.platform !== 'macos').every((entry) => entry.kind === 'application'));
+});
+
+test('release notes describe the actual Mac artifact kind without changing legacy claims', () => {
+  const sourceSha = 'a'.repeat(40);
+  const nativeNotes = releaseNotes(manifest(), sourceSha);
+  assert.match(nativeNotes, /Mac downloads contain native \.saver plugins/);
+  assert.match(nativeNotes, /Windows and Linux downloads are x64 desktop applications/);
+  const oldNotes = releaseNotes(manifest('preview', { legacy: true }), sourceSha);
+  assert.match(oldNotes, /Mac downloads contain desktop applications/);
+  assert.doesNotMatch(oldNotes, /Mac downloads contain native/);
 });
 
 test('bad releases cannot replace valid existing downloads; explicit bad tags fail', async () => {

@@ -16,12 +16,18 @@ function updateManifest() {
   }
   manifest.href = `${import.meta.env.BASE_URL}manifest-${asset.symbol.toLowerCase()}.webmanifest`;
 }
-updateManifest();
-window.addEventListener('popstate', updateManifest);
+if (window.nativeScreensaver) {
+  // The ScreenSaverView owns installation and execution. Its bundled custom-
+  // scheme document must never become an installed web app or register a worker.
+  document.querySelectorAll('link[rel="manifest"]').forEach((manifest) => manifest.remove());
+} else {
+  updateManifest();
+  window.addEventListener('popstate', updateManifest);
+}
 
 createRoot(document.getElementById('root')!).render(<App />);
 
 // Electron loads packaged assets from file://; the installed desktop app has no service worker.
-if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+if (!window.nativeScreensaver && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
   registerSW({ immediate: true });
 }

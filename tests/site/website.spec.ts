@@ -7,7 +7,7 @@ const assets = [
   { symbol: 'HYPE', name: 'Hyperliquid', slug: 'hyperliquid', price: 38.45 },
 ] as const;
 
-type Download = { asset: string; platform: string; arch: string; format: string; filename: string; url: string; size: number; sha256: string; signed: boolean };
+type Download = { asset: string; platform: string; arch: string; format: string; filename: string; url: string; size: number; sha256: string; signed: boolean; kind?: 'application' | 'screensaver' };
 type Manifest = { schemaVersion: number; version: string | null; channel: string; downloads: Download[] };
 
 async function mockPreview(page: Page, symbol: string, price: number) {
@@ -83,6 +83,14 @@ test('every installer link matches the published manifest and absent releases ha
     const accessibleName = await link.getAttribute('aria-label');
     expect(accessibleName).toContain(assets.find((asset) => asset.symbol === download.asset)!.name);
     expect(accessibleName).toContain(columns[download.platform]);
+    if (download.platform === 'macos') {
+      // Historical manifests did not identify kind. Those artifacts remain apps;
+      // the website may claim a native saver only for an explicit saver entry.
+      expect(accessibleName).toContain(download.kind === 'screensaver' ? 'native screen saver (.saver)' : 'desktop app');
+      expect(accessibleName).not.toContain(download.kind === 'screensaver' ? 'desktop app' : 'native screen saver');
+      const packageDetails = download.format === 'dmg' ? link.locator('..').locator('.download-file') : link;
+      await expect(packageDetails).toContainText(download.kind === 'screensaver' ? '.saver' : 'App');
+    }
   }
   if (manifest.downloads.some((download) => download.platform !== 'linux' && !download.signed)) {
     await expect(page.locator('.release-notice')).toContainText('unsigned');
@@ -105,6 +113,10 @@ test('download cards fit narrow screens and keep preview links keyboard accessib
     await expect(preview).toBeVisible();
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // Capture the fixed mobile navigation in its initial position after scrolling
+  // through each card for the keyboard checks above.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await page.screenshot({ path: info.outputPath('landing-320.png'), fullPage: true });
 });
 

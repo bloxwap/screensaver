@@ -9,9 +9,23 @@ Downloads are enabled only when a verified release manifest lists a real artifac
 
 Choose the architecture that matches your computer. Mac offers Apple silicon and Intel; initial Windows and Linux builds target x64.
 
-## The operating system blocks the app
+## The operating system blocks the download
 
-Check whether the page labels the download as an unsigned preview. Preview builds may receive publisher or security prompts. See [installation](/docs/installation) for platform options and use the browser preview if you prefer to wait for a signed release.
+Check whether the page labels the download as an unsigned preview. Mac preview bundles may have an ad-hoc signature without a verified publisher identity. Operating systems may block preview builds or show publisher/security prompts. See [installation](/docs/installation) for platform options; the browser preview works without installing a native bundle or app.
+
+## A Mac edition does not appear or preview
+
+Confirm that the `.saver` bundle itself is in `~/Library/Screen Savers` or `/Library/Screen Savers`, rather than still inside the DMG or ZIP. Close and reopen System Settings, search for Screen Saver, and check the installed editions again.
+
+Verify the bundle's architecture matches your Mac and that your macOS version meets the release requirements. If the system reports an unverified developer or refuses to load a preview build, check the release's signing status. Browser preview success does not prove that macOS has accepted the installed bundle.
+
+When replacing an older edition, select another screen saver first and close System Settings before replacing the bundle. If an old `0.1.x` Bloxwap Mac app remains running in the tray, quit it so it does not activate alongside the native saver.
+
+## macOS host compatibility
+
+A developer reported `WKWebView` content disappearing in the legacy screen-saver host on macOS 26.4 (FB22353950). Apple DTS acknowledged the report; the thread does not establish a fix. [Apple Developer Forums](https://developer.apple.com/forums/thread/820860).
+
+Bloxwap's standalone `ScreenSaverView`/`WKWebView` checks passed on macOS 15.7.9 for Apple Silicon and Intel, including visible animation, live prices, preview sizing, and stop/restart behavior. Sustained rendering inside System Settings or the `legacyScreenSaver` system host has not yet been verified. macOS 13 is the minimum build target, rather than certification of every later host. [Task #14](https://github.com/bloxwap/screensaver/issues/14) tracks the remaining native-host checks. The [browser preview](/docs/preview) remains available separately.
 
 ## No price, or a delayed/offline price
 
@@ -29,7 +43,9 @@ Keep awake is opt-in and can be refused by system power settings. It does not ov
 
 ## Automatic activation does not start
 
-Check that the desktop edition is running, **Start when my computer is idle** is enabled, and its wait time has elapsed. A system tray/menu bar is required. Locking or suspending the computer prevents the idle display from opening.
+On Mac, check that the Bloxwap edition is selected in the system's Screen Saver settings and review the system's activation, display-sleep, and lock options. macOS controls this behavior; there is no Bloxwap tray timer to enable. Test with the system preview.
+
+On Windows or Linux, check that the app is running, **Start when my computer is idle** is enabled, and its wait time has elapsed. A system tray is required. Locking or suspending the computer prevents the idle display from opening.
 
 On Linux, try the tray's manual preview. If that works while idle activation does not, the session may not expose idle state. This can happen under Wayland.
 

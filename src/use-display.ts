@@ -7,7 +7,8 @@ export function useDisplay() {
   const [awake, setAwake] = useState(false);
   const [message, setMessage] = useState('');
   const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
-  const automatic = Boolean(window.screensaver) && new URLSearchParams(location.search).get('mode') === 'idle';
+  const nativeHost = Boolean(window.nativeScreensaver);
+  const automatic = nativeHost || Boolean(window.screensaver) && new URLSearchParams(location.search).get('mode') === 'idle';
 
   useEffect(() => {
     const clock = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 1_000);
@@ -15,16 +16,18 @@ export function useDisplay() {
     const updateFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
     window.addEventListener('online', updateNetwork);
     window.addEventListener('offline', updateNetwork);
-    document.addEventListener('fullscreenchange', updateFullscreen);
+    if (!nativeHost) document.addEventListener('fullscreenchange', updateFullscreen);
     let hideTimer: ReturnType<typeof setTimeout>;
     const show = () => {
       setControls(true);
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => setControls(false), 4_000);
     };
-    window.addEventListener('pointermove', show, { passive: true });
-    window.addEventListener('pointerdown', show, { passive: true });
-    window.addEventListener('keydown', show);
+    if (!nativeHost) {
+      window.addEventListener('pointermove', show, { passive: true });
+      window.addEventListener('pointerdown', show, { passive: true });
+      window.addEventListener('keydown', show);
+    }
     return () => {
       clearInterval(clock);
       clearTimeout(hideTimer);
@@ -35,10 +38,10 @@ export function useDisplay() {
       window.removeEventListener('pointerdown', show);
       window.removeEventListener('keydown', show);
     };
-  }, []);
+  }, [nativeHost]);
 
   useEffect(() => {
-    if (!awake || automatic) return;
+    if (nativeHost || !awake || automatic) return;
     let cancelled = false;
     let active = true;
     let pending = false;
@@ -82,10 +85,10 @@ export function useDisplay() {
       window.removeEventListener('pageshow', resume);
       release();
     };
-  }, [awake, automatic]);
+  }, [awake, automatic, nativeHost]);
 
   useEffect(() => {
-    if (!automatic || !window.screensaver) return;
+    if (nativeHost || !automatic || !window.screensaver) return;
     // Give the window time to settle before responding to pointer events generated on opening.
     const started = performance.now();
     const dismiss = () => { if (performance.now() - started > 1_500) window.screensaver?.dismiss(); };
@@ -97,9 +100,10 @@ export function useDisplay() {
       window.removeEventListener('pointerdown', dismiss);
       window.removeEventListener('keydown', dismiss);
     };
-  }, [automatic]);
+  }, [automatic, nativeHost]);
 
   async function toggleFullscreen() {
+    if (nativeHost) return;
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();

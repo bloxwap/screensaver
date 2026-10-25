@@ -45,17 +45,32 @@ Browser checks use the real renderer and SDK with controlled transport responses
 
 `npm run preview` serves the renderer production build on port 5173. Bun can invoke the same scripts after npm installs dependencies.
 
-## Desktop builds
+## Native and desktop builds
 
 ```sh
-npm run desktop
 npm run desktop:pack -- --asset BTC
 npm run desktop:dist -- --asset SOL --arch arm64
 ```
 
-Build on the target OS. `--asset` accepts BTC, SOL, ETH, or HYPE. Mac supports `arm64` and `x64`; Windows and Linux target `x64`. The example builds Solana for Apple silicon when run on a Mac.
+Build on the target OS. `--asset` accepts BTC, SOL, ETH, or HYPE. Mac supports `arm64` and `x64`; Windows and Linux target `x64`. Mac builds require the Xcode Command Line Tools and target macOS 13 or newer.
 
-Output and staging directories are isolated by edition, OS, and architecture. Packaged apps contain edition metadata, the bundled renderer, the Electron host, and notices. Docs tooling stays outside desktop packages.
+On Mac, the packaging command builds a native Swift `ScreenSaverView` with a `WKWebView` that loads the bundled renderer. The example creates Solana's `.saver` bundle in DMG/ZIP archives. `desktop:pack` produces an unpacked bundle, such as `release/bitcoin-macos-arm64/Bloxwap Bitcoin Screensaver.saver`; install it in a Screen Savers folder and select it in macOS to test the real system host.
+
+On Windows and Linux, packaging builds the Electron app with its edition metadata, tray, and optional idle controls. `npm run desktop` runs that Electron host locally for development; it is not the Mac distribution path.
+
+Output directories are isolated by edition, OS, and architecture. All native downloads bundle the same web display and third-party notices. Docs tooling stays outside the packages. Browser tests verify the shared renderer; native macOS bundle loading and system preview need their own verification.
+
+### Native Mac smoke check
+
+After building an unpacked bundle for the current Mac architecture:
+
+```sh
+node scripts/macos-smoke.mjs --asset BTC --arch arm64
+```
+
+Use `--arch x64` on an Intel Mac. The harness loads the actual `ScreenSaverView` and `WKWebView` bundle without installing it or changing system settings. `--asset all` checks all four previously built editions; `--require-live` additionally requires fresh public market data.
+
+This standalone harness checks bundle/runtime behavior. macOS Screen Saver settings and the system screen-saver host need separate install, preview, activation, and dismissal verification. Record the actual macOS version and outcomes before making compatibility claims.
 
 ## Shared design assets
 

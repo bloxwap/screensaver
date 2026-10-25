@@ -3,7 +3,7 @@ title: Releasing
 description: Build public preview downloads and prepare a verified stable release.
 ---
 
-The **Desktop installers** workflow builds four editions across Mac Apple silicon/Intel, Windows x64, and Linux x64. Releases include installers, `SHA256SUMS`, and `release-manifest.json`.
+The **Desktop installers** workflow builds four editions across Mac Apple silicon/Intel, Windows x64, and Linux x64. Mac downloads contain native `.saver` bundles; Windows and Linux downloads contain desktop apps. Releases include `SHA256SUMS` and `release-manifest.json`.
 
 ## Preview releases
 
@@ -19,23 +19,23 @@ Use `-f publish=false` for a build-only run. Preview builds remain labeled unsig
 
 ## Stable releases
 
-Stable publication uses a version tag matching `package.json`, such as `v0.1.0`. The complete expected matrix and Mac/Windows signing verification must pass before publication.
+Stable publication uses a version tag matching `package.json`, such as `v0.2.0`, on a commit already integrated into `main`. The complete expected matrix and Mac/Windows signing verification must pass before publication.
 
 Credentials belong in the release environment, and pull-request builds do not need them. See [signing setup](https://github.com/bloxwap/screensaver/blob/main/.github/SIGNING.md) for required credentials and verification commands.
 
-Native install, launch, tray, idle, and uninstall checks remain part of release verification. A successful packaging job alone does not establish those behaviors.
+On Mac, verify the `.saver` bundle installs, appears in the system settings, loads in the native preview, and follows macOS activation/dismissal behavior. On Windows/Linux, verify app installation, launch, tray, idle activation, and uninstall. A successful packaging job alone does not establish these behaviors.
 
 ## Download metadata
 
-The manifest records each artifact's asset, OS, architecture, version, public URL, filename, byte size, checksum, and signing status. Names follow:
+The manifest records each artifact's asset, OS, architecture, version, public URL, filename, byte size, checksum, signing status, and `kind` (`screensaver` or `application`). Legacy schema-1 entries without `kind` are applications, including archived Mac downloads; they must retain that label. Names follow:
 
 ```text
 bloxwap-screensaver-{asset-slug}-{version}-{os}-{arch}.{format}
 ```
 
-The complete matrix has 28 files: DMG and ZIP for two Mac architectures, one Windows installer, and AppImage and DEB for Linux, for each of four assets.
+The complete matrix remains 16 build targets and 28 files: DMG and ZIP containing the native `.saver` for two Mac architectures, one Windows installer, and AppImage and DEB for Linux, for each of four assets.
 
-Publication refreshes GitHub Pages with the verified manifest. Links point to a specific public GitHub Release; visitors do not need GitHub sign-in. Failed or incomplete builds do not replace the current download list.
+Publication refreshes GitHub Pages with verified metadata. The site prefers a valid stable release; preview publication preserves that stable homepage when one exists. Links point to a specific public GitHub Release without sign-in. Failed or incomplete builds do not replace the current download list.
 
 For a local site build, fetch the latest valid stable release, or the latest preview when no stable release exists:
 

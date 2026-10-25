@@ -6,6 +6,7 @@ import { desktopOptions, parseDesktopArgs } from './lib/desktop-config.cjs';
 /** Each edition/OS/architecture owns its staging directory, so matrix jobs cannot mix assets. */
 export async function stageDesktop(input = {}) {
   const options = desktopOptions(input);
+  if (options.platform === 'macos') throw new Error('Mac distribution uses a native .saver bundle; use desktop-build.mjs instead of Electron staging.');
   const source = path.join(options.projectRoot, 'dist');
   if (!(await stat(path.join(source, 'index.html')).catch(() => null))?.isFile()) {
     throw new Error('Missing dist/index.html. Run npm run build before staging the desktop app.');

@@ -16,6 +16,18 @@ const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const TAG = /^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 
+/** Schema 1 releases predating native Mac support are applications, regardless of OS. */
+export function downloadKind(download) {
+  if (download.kind === undefined) return 'application';
+  if (!['screensaver', 'application'].includes(download.kind)) throw new Error(`Invalid download kind: ${download.filename}`);
+  return download.kind;
+}
+
+export function normalizeManifest(manifest, options) {
+  validateManifest(manifest, options);
+  return { ...manifest, downloads: manifest.downloads.map((download) => ({ ...download, kind: downloadKind(download) })) };
+}
+
 export function expectedDownloads(version, catalog = CATALOG) {
   if (typeof version !== 'string' || !VERSION.test(version)) throw new Error('Invalid release version');
   return catalog.flatMap((asset) => TARGETS.flatMap(({ platform, arch, formats }) => formats.map((format) => ({
@@ -29,7 +41,7 @@ export function releaseAssetUrl(tag, filename, repository = REPOSITORY) {
 }
 
 /** Validate the complete public contract, including all 12 asset/OS choices and advertised architectures. */
-export function validateManifest(manifest, { catalog = CATALOG, repository = REPOSITORY } = {}) {
+export function validateManifest(manifest, { catalog = CATALOG, repository = REPOSITORY, requireCurrentKinds = false } = {}) {
   if (!manifest || manifest.schemaVersion !== 1 || !Array.isArray(manifest.downloads)) throw new Error('Invalid release manifest schema');
   if (manifest.channel === 'unreleased') {
     if (manifest.downloads.length || ['version', 'tag', 'publishedAt', 'releaseUrl'].some((key) => manifest[key] !== null)) throw new Error('Unreleased manifest must contain no downloads or version');
@@ -43,10 +55,17 @@ export function validateManifest(manifest, { catalog = CATALOG, repository = REP
   if (manifest.releaseUrl !== `https://github.com/${repository}/releases/tag/${encodeURIComponent(manifest.tag)}`) throw new Error('Invalid release page URL');
   if (manifest.downloads.length !== expected.length) throw new Error(`Expected ${expected.length} installers, got ${manifest.downloads.length}`);
   const entries = new Map();
+  const editionKinds = new Map();
   for (const download of manifest.downloads) {
     if (!download || typeof download.filename !== 'string' || entries.has(download.filename)) throw new Error('Duplicate or invalid installer filename');
     if (!Number.isSafeInteger(download.size) || download.size <= 0 || !SHA256.test(download.sha256)) throw new Error(`Invalid size/checksum: ${download.filename}`);
     if (typeof download.signed !== 'boolean') throw new Error(`Missing signing status: ${download.filename}`);
+    const kind = downloadKind(download);
+    if (kind === 'screensaver' && download.platform !== 'macos') throw new Error(`Only Mac supports native screensaver downloads: ${download.filename}`);
+    if (requireCurrentKinds && download.kind !== (download.platform === 'macos' ? 'screensaver' : 'application')) throw new Error(`Current releases require an explicit ${download.platform === 'macos' ? 'screensaver' : 'application'} kind: ${download.filename}`);
+    const edition = `${download.asset}/${download.platform}`;
+    if (editionKinds.has(edition) && editionKinds.get(edition) !== kind) throw new Error(`Download formats or architectures disagree on kind: ${edition}`);
+    editionKinds.set(edition, kind);
     if (download.url !== releaseAssetUrl(manifest.tag, download.filename, repository)) throw new Error(`Invalid public installer URL: ${download.filename}`);
     if (manifest.channel === 'stable' && download.platform !== 'linux' && !download.signed) throw new Error(`Stable installer is not signed: ${download.filename}`);
     entries.set(download.filename, download);
@@ -68,7 +87,7 @@ async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   // electron-builder keeps unpacked executables beside the distributable installers.
   const files = await Promise.all(entries.map(async (entry) => {
-    if (entry.isDirectory()) return /(?:\.app|-unpacked)$/.test(entry.name) || /^(mac|mac-arm64|mac-x64|mac-universal)$/.test(entry.name) ? [] : walk(join(directory, entry.name));
+    if (entry.isDirectory()) return /(?:\.app|\.saver|-unpacked)$/.test(entry.name) || /^(mac|mac-arm64|mac-x64|mac-universal)$/.test(entry.name) ? [] : walk(join(directory, entry.name));
     return entry.isFile() ? [join(directory, entry.name)] : [];
   }));
   return files.flat();
@@ -90,7 +109,7 @@ export async function createManifest({ directory, version, tag, channel, publish
       if (report.schemaVersion !== 1 || report.channel !== channel || !Array.isArray(report.files)) throw new Error(`Invalid signing report: ${file}`);
       for (const proof of report.files) {
         if (proofs.has(proof.filename)) throw new Error(`Duplicate signing evidence: ${proof.filename}`);
-        proofs.set(proof.filename, { ...proof, platform: report.platform });
+        proofs.set(proof.filename, { ...proof, platform: report.platform, reportedAsset: report.asset, reportedVersion: report.version, reportedArch: report.arch });
       }
     }
   }
@@ -103,11 +122,15 @@ export async function createManifest({ directory, version, tag, channel, publish
     const proof = proofs.get(item.filename);
     const sha256 = await sha256File(file);
     if (!proof || proof.sha256 !== sha256 || proof.platform !== item.platform || typeof proof.signed !== 'boolean') throw new Error(`Missing or mismatched signing evidence: ${item.filename}`);
+    if (proof.reportedAsset !== item.asset || proof.reportedVersion !== version || proof.reportedArch !== item.arch) throw new Error(`Signing evidence identifies a different asset, version, or architecture: ${item.filename}`);
+    const kind = item.platform === 'macos' ? 'screensaver' : 'application';
+    if (proof.kind !== kind) throw new Error(`Signing evidence must identify an actual ${kind}: ${item.filename}`);
+    if (item.platform === 'macos' && proof.verification !== 'embedded-screensaver') throw new Error(`Mac archive lacks verified embedded screensaver evidence: ${item.filename}`);
     if (channel === 'stable' && item.platform === 'macos' && (!proof.signed || !proof.notarized)) throw new Error(`Mac installer is not signed and notarized: ${item.filename}`);
     if (channel === 'stable' && item.platform === 'windows' && (!proof.signed || !proof.timestamped)) throw new Error(`Windows installer is not signed and timestamped: ${item.filename}`);
-    downloads.push({ ...item, url: releaseAssetUrl(tag, item.filename, repository), size: (await stat(file)).size, sha256, signed: proof.signed });
+    downloads.push({ ...item, kind: proof.kind, url: releaseAssetUrl(tag, item.filename, repository), size: (await stat(file)).size, sha256, signed: proof.signed });
   }
-  return validateManifest({ schemaVersion: 1, version, tag, publishedAt, releaseUrl: `https://github.com/${repository}/releases/tag/${encodeURIComponent(tag)}`, channel, downloads }, { catalog, repository });
+  return validateManifest({ schemaVersion: 1, version, tag, publishedAt, releaseUrl: `https://github.com/${repository}/releases/tag/${encodeURIComponent(tag)}`, channel, downloads }, { catalog, repository, requireCurrentKinds: true });
 }
 
 export function checksumText(manifest) {
@@ -137,7 +160,7 @@ export function verifyReleaseAssets(manifest, release, { allowDraft = false } = 
 }
 
 /** Decide whether a retry can safely continue without replacing public binaries. */
-export function releaseResumeState(manifest, release, { sourceSha, tagCommitSha = null } = {}) {
+export function releaseResumeState(manifest, release, { sourceSha, tagCommitSha = null, publishedManifest = null } = {}) {
   validateManifest(manifest);
   if (!/^[a-f0-9]{40}$/.test(sourceSha ?? '')) throw new Error('Release recovery requires a full source commit SHA');
   if (!release) return 'create';
@@ -149,9 +172,31 @@ export function releaseResumeState(manifest, release, { sourceSha, tagCommitSha 
   // target_commitish may be a moving branch name; resolve the actual tag commit.
   if (tagCommitSha !== sourceSha) throw new Error('Published release tag points to a different source commit');
   verifyReleaseAssets(manifest, release);
+  if (!publishedManifest) throw new Error('Public release recovery requires its published manifest');
+  validateManifest(publishedManifest);
+  if (publishedManifest.tag !== manifest.tag || publishedManifest.version !== manifest.version || publishedManifest.channel !== manifest.channel) throw new Error('Published release metadata does not match the requested release');
+  const publishedDownloads = new Map(publishedManifest.downloads.map((entry) => [entry.filename, entry]));
   for (const entry of manifest.downloads) {
     const uploaded = release.assets.find((asset) => asset.name === entry.filename);
     if (uploaded.digest !== `sha256:${entry.sha256}`) throw new Error(`Cannot prove the published artifact is unchanged: ${entry.filename}`);
+    const published = publishedDownloads.get(entry.filename);
+    if (!published || published.sha256 !== entry.sha256 || downloadKind(published) !== downloadKind(entry) || published.signed !== entry.signed) throw new Error(`Cannot change the kind or verification metadata of a public artifact: ${entry.filename}`);
   }
   return 'verified-public';
+}
+
+export function releaseNotes(manifest, sourceSha) {
+  validateManifest(manifest);
+  const mac = manifest.downloads.filter((entry) => entry.platform === 'macos');
+  const nativeMac = mac.length > 0 && mac.every((entry) => downloadKind(entry) === 'screensaver');
+  const legacyMac = mac.length > 0 && mac.every((entry) => downloadKind(entry) === 'application');
+  const macDescription = nativeMac
+    ? 'Mac downloads contain native .saver plugins for Apple Silicon and Intel. Install the plugin in macOS Screen Saver settings.'
+    : legacyMac
+      ? 'Mac downloads contain desktop applications for Apple Silicon and Intel with optional idle activation. They are not native macOS Screen Saver plugins.'
+      : 'Mac download types are identified in the release manifest; choose the native .saver plugin or desktop application indicated for that edition.';
+  const distribution = manifest.channel === 'preview'
+    ? 'These preview builds are unsigned and have not been certified by Apple or Microsoft. Your operating system may require additional confirmation.'
+    : 'Mac downloads are signed and notarized. Windows installers are signed and timestamped. Linux installers include SHA-256 checksums.';
+  return `${manifest.channel === 'preview' ? 'Automated preview of ' : ''}Bloxwap Screensaver ${manifest.version}.\n\nFour editions: Bitcoin, Solana, Ethereum, and Hyperliquid.\n\n${macDescription}\nWindows and Linux downloads are x64 desktop applications with optional idle activation.\n\n${distribution}\n\nDownload and installation help: https://bloxwap.github.io/screensaver/\n\nAll ${manifest.downloads.length} downloads are accompanied by SHA256SUMS and release-manifest.json. Source: ${sourceSha}.\n`;
 }

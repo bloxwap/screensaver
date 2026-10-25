@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseSigningArgs, SIGNING_CHANNELS, signingPlatform } from './signing-preflight.mjs';
+import { macOSBuildPlan, verifyMacOSBundle } from './macos-build.mjs';
 
 const FORMATS = { macos: ['dmg', 'zip'], windows: ['exe'], linux: ['AppImage', 'deb'] };
 const HOST = { macos: 'darwin', windows: 'win32', linux: 'linux' };
@@ -44,7 +45,7 @@ async function verifyWindowsFile(file, run) {
   assertAuthenticodeSignature(value);
 }
 
-async function verifyMacArtifact(file, format, run) {
+async function verifyMacArtifact(file, format, expected, channel, run) {
   const temporary = await mkdtemp(path.join(tmpdir(), 'bloxwap-signature-'));
   const extracted = path.join(temporary, 'application');
   await mkdir(extracted);
@@ -55,14 +56,31 @@ async function verifyMacArtifact(file, format, run) {
       run('hdiutil', ['attach', '-readonly', '-nobrowse', '-mountpoint', extracted, file]);
       mounted = true;
     }
-    const apps = (await readdir(extracted, { withFileTypes: true })).filter((entry) => entry.isDirectory() && entry.name.endsWith('.app'));
-    if (apps.length !== 1) throw new Error('Mac installer must contain exactly one top-level application bundle.');
-    const app = path.join(extracted, apps[0].name);
-    run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
-    const details = run('codesign', ['--display', '--verbose=4', app]);
-    assertDeveloperIdSignature(`${details.stdout}\n${details.stderr}`);
-    run('spctl', ['--assess', '--type', 'execute', '--verbose=2', app]);
-    run('xcrun', ['stapler', 'validate', app]);
+    const entries = await readdir(extracted, { withFileTypes: true });
+    const bundles = entries.filter((entry) => entry.isDirectory() && entry.name.endsWith('.saver'));
+    if (bundles.length !== 1 || entries.some((entry) => entry.name.endsWith('.app'))) throw new Error('Mac installer must contain exactly one native .saver bundle and no .app.');
+    const bundle = path.join(extracted, bundles[0].name);
+    const plan = macOSBuildPlan({ asset: { bitcoin: 'BTC', solana: 'SOL', ethereum: 'ETH', hyperliquid: 'HYPE' }[expected.slug], arch: expected.arch });
+    if (plan.version !== expected.version || bundles[0].name !== path.basename(plan.bundle)) throw new Error('Native screen saver archive version/name does not match the release.');
+    plan.bundle = bundle;
+    plan.binary = path.join(bundle, 'Contents/MacOS', plan.identity);
+    plan.resources = path.join(bundle, 'Contents/Resources');
+    await verifyMacOSBundle(plan, (command, args) => run(command, args).stdout.trim());
+    run('codesign', ['--verify', '--strict', '--verbose=2', bundle]);
+    const details = run('codesign', ['--display', '--verbose=4', bundle]);
+    if (channel === 'stable') {
+      assertDeveloperIdSignature(`${details.stdout}\n${details.stderr}`);
+      // Native .saver plug-ins are not applications, so assess notarized code
+      // directly instead of using spctl's application-only execute assessment.
+      run('codesign', ['--verify', '--strict', '-R=notarized', '--check-notarization', bundle]);
+      if (format === 'dmg') {
+        run('codesign', ['--verify', '--strict', file]);
+        run('xcrun', ['stapler', 'validate', file]);
+        run('spctl', ['--assess', '--type', 'open', '--context', 'context:primary-signature', '--verbose=2', file]);
+      }
+    } else if (!/^Signature=adhoc$/m.test(`${details.stdout}\n${details.stderr}`)) {
+      throw new Error('Preview native screen savers must have an ad-hoc signature.');
+    }
   } finally {
     if (mounted) {
       // Never recursively remove a still-mounted image if detaching fails.
@@ -81,7 +99,7 @@ export async function verifySigning({ platform = process.platform, channel = pro
   const reportPath = path.join(root, 'signing.json');
   // A failed re-verification must not leave stale successful evidence for upload.
   await rm(reportPath, { force: true });
-  if (channel === 'stable' && HOST[platform] !== host) throw new Error(`Stable ${platform} verification requires a native ${platform} runner.`);
+  if ((channel === 'stable' || platform === 'macos') && HOST[platform] !== host) throw new Error(`${channel} ${platform} verification requires a native ${platform} runner.`);
   const entries = await readdir(root, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
@@ -110,10 +128,10 @@ export async function verifySigning({ platform = process.platform, channel = pro
   const verified = [];
   for (const file of files) {
     const sha256 = await sha256File(file.file);
-    if (channel === 'stable' && platform === 'macos') await verifyMacArtifact(file.file, file.format, run);
+    if (platform === 'macos') await verifyMacArtifact(file.file, file.format, file, channel, run);
     if (channel === 'stable' && platform === 'windows') await verifyWindowsFile(file.file, run);
     if (sha256 !== await sha256File(file.file)) throw new Error(`Installer changed during verification: ${file.filename}`);
-    verified.push({ filename: file.filename, sha256, signed: channel === 'stable' && platform !== 'linux', ...(platform === 'macos' ? { notarized: channel === 'stable', verification: 'embedded-application' } : {}), ...(platform === 'windows' ? { timestamped: channel === 'stable' } : {}) });
+    verified.push({ filename: file.filename, sha256, kind: platform === 'macos' ? 'screensaver' : 'application', signed: channel === 'stable' && platform !== 'linux', ...(platform === 'macos' ? { notarized: channel === 'stable', verification: 'embedded-screensaver', stapled: channel === 'stable' && file.format === 'dmg' } : {}), ...(platform === 'windows' ? { timestamped: channel === 'stable' } : {}) });
   }
   const report = { schemaVersion: 1, platform, channel, arch: files[0].arch, asset: { bitcoin: 'BTC', solana: 'SOL', ethereum: 'ETH', hyperliquid: 'HYPE' }[files[0].slug], version: files[0].version, verifiedAt: new Date().toISOString(), files: verified };
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);

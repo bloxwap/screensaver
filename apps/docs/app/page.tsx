@@ -3,11 +3,14 @@ import { HomeLayout } from 'fumadocs-ui/layouts/home';
 import { Downloads, type ReleaseManifest } from '@/components/downloads';
 import { SiteFooter } from '@/components/site-footer';
 import { layoutOptions } from '@/lib/site';
+import { isNativeMacDownload } from '@/lib/releases';
 import assets from '../../../config/assets.json';
 import releases from '../../../config/releases.json';
 import './landing.css';
 
 export default function Home() {
+  const manifest = releases as ReleaseManifest;
+  const hasNativeMac = manifest.downloads.some(isNativeMacDownload);
   return <HomeLayout {...layoutOptions()}>
     <main className="screensaver-home">
       <section className="landing-hero" aria-labelledby="screensaver-title">
@@ -21,11 +24,11 @@ export default function Home() {
         </div>
       </section>
 
-      <Downloads assets={assets} manifest={releases as ReleaseManifest} />
+      <Downloads assets={assets} manifest={manifest} />
 
       <section className="landing-details" aria-label="About the screensaver">
         <div><span className="landing-detail-number">01</span><h2>A screen with room to breathe.</h2><p>A full-screen chart, a moving price, and a quiet grid. The same display in your browser and on your desktop.</p></div>
-        <div><span className="landing-detail-number">02</span><h2>On your schedule.</h2><p>Open it whenever you like, or enable automatic idle activation in the desktop app. Your sleep and lock settings stay in place.</p></div>
+        <div><span className="landing-detail-number">02</span><h2>On your schedule.</h2><p>{hasNativeMac ? 'Mac .saver editions use the system screen saver settings. Desktop app editions offer optional idle activation.' : 'Open it whenever you like, or enable automatic idle activation in the desktop app.'} Your sleep and lock settings stay in place.</p></div>
         <Link href="/docs/" className="landing-docs-link"><span>Settle in.</span><strong>Read the guide <span aria-hidden="true">↗</span></strong></Link>
       </section>
     </main>
