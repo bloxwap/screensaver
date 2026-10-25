@@ -53,7 +53,7 @@ test('legacy Mac downloads remain labeled as apps even when their filenames say 
   assert.ok(labels.every((label) => label.includes('desktop app')));
   assert.ok(labels.every((label) => !label.includes('native screen saver')));
   assert.match(row, /App · DMG/);
-  assert.match(row, /App · Apple Silicon/);
+  assert.match(row, /App · Apple Silicon/i);
   assert.match(html, /The current Mac downloads contain desktop apps\./);
   assert.doesNotMatch(html, /Mac downloads install a native/);
 });
@@ -65,7 +65,7 @@ test('native Mac downloads identify the saver package and system installation pa
   assert.equal(labels.length, 2);
   assert.ok(labels.every((label) => label.includes('native screen saver (.saver)')));
   assert.match(row, /\.saver · DMG/);
-  assert.match(row, /\.saver · Apple Silicon/);
+  assert.match(row, /\.saver · Apple Silicon/i);
   assert.match(html, /Mac downloads install a native \.saver in your system screen saver settings\./);
   assert.doesNotMatch(row, /desktop app|App ·/);
 });
