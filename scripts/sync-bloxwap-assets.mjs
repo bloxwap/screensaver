@@ -8,6 +8,9 @@ import { execFileSync } from 'node:child_process';
 const source = resolve(process.argv[2] ?? '../monorepo');
 const files = [
   ['packages/markets/svg/BTC.svg', 'public/brand/BTC.svg'],
+  ['packages/markets/svg/SOL.svg', 'public/brand/SOL.svg'],
+  ['packages/markets/svg/ETH.svg', 'public/brand/ETH.svg'],
+  ['packages/markets/svg/HYPE.svg', 'public/brand/HYPE.svg'],
   ['packages/tokens/src/brand.ts', 'src/bloxwap/brand.ts'],
   ['packages/trading-core/src/chart-math.ts', 'src/bloxwap/chart-math.ts'],
   ['packages/ui/src/components/brand-wordmark.tsx', 'src/bloxwap/BrandWordmark.tsx', (text) => text.replace('@workspace/tokens/brand', './brand')],

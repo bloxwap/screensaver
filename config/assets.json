@@ -1,0 +1,30 @@
+[
+  {
+    "symbol": "BTC",
+    "name": "Bitcoin",
+    "slug": "bitcoin",
+    "tradeUrl": "https://bloxwap.app/trade/BTC",
+    "icon": "brand/BTC.svg"
+  },
+  {
+    "symbol": "SOL",
+    "name": "Solana",
+    "slug": "solana",
+    "tradeUrl": "https://bloxwap.app/trade/SOL",
+    "icon": "brand/SOL.svg"
+  },
+  {
+    "symbol": "ETH",
+    "name": "Ethereum",
+    "slug": "ethereum",
+    "tradeUrl": "https://bloxwap.app/trade/ETH",
+    "icon": "brand/ETH.svg"
+  },
+  {
+    "symbol": "HYPE",
+    "name": "Hyperliquid",
+    "slug": "hyperliquid",
+    "tradeUrl": "https://bloxwap.app/trade/HYPE",
+    "icon": "brand/HYPE.svg"
+  }
+]

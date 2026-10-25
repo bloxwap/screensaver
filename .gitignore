@@ -8,3 +8,11 @@ release/
 test-results/
 playwright-report/
 .cache/
+apps/docs/.next/
+apps/docs/.source/
+apps/docs/next-env.d.ts
+apps/docs/out/
+apps/docs/public/preview/
+apps/docs/public/brand/
+apps/docs/public/icon-512.png
+apps/docs/tsconfig.tsbuildinfo

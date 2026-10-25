@@ -1,9 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_POINTS, STALE_MS, bookQuote, candlePoints, feedStatus, initialSnapshot, mergePoints, toPoint } from './model';
+import { ASSETS, DEFAULT_ASSET, getAsset } from '../assets';
 
 const now = 1_800_000_000_000;
 const book = { coin: 'BTC', time: now, levels: [[{ px: '67000' }], [{ px: '67001' }]] as [{ px: string }[], { px: string }[]] };
+
+test('catalog resolves only supported identities and cannot be changed by a consumer', () => {
+  assert.deepEqual(ASSETS.map(({ symbol }) => symbol), ['BTC', 'SOL', 'ETH', 'HYPE']);
+  for (const asset of ASSETS) {
+    assert.equal(getAsset(` ${asset.symbol.toLowerCase()} `), asset);
+    assert.equal(asset.tradeUrl, `https://bloxwap.app/trade/${asset.symbol}`);
+    assert.equal(asset.icon, `brand/${asset.symbol}.svg`);
+    assert.ok(Object.isFrozen(asset));
+  }
+  for (const input of [null, undefined, '', 'DOGE', '../../ETH', 'BTC&asset=SOL']) assert.equal(getAsset(input), DEFAULT_ASSET);
+  assert.ok(Object.isFrozen(ASSETS));
+});
+
+test('all editions accept only their own market data without rounding low-priced quotes', () => {
+  const prices = [67000, 150, 3500, 0.1234];
+  for (const [index, asset] of ASSETS.entries()) {
+    const bid = prices[index];
+    const ask = bid + 0.0002;
+    const frame = { ...book, coin: asset.symbol, levels: [[{ px: String(bid) }], [{ px: String(ask) }]] as typeof book.levels };
+    assert.equal(bookQuote(frame, now, null, asset.symbol)?.price, (bid + ask) / 2);
+    for (const other of ASSETS.filter(({ symbol }) => symbol !== asset.symbol)) {
+      assert.equal(bookQuote({ ...frame, coin: other.symbol }, now, null, asset.symbol), null);
+    }
+    const history = ASSETS.map(({ symbol }, i) => ({ t: now - 120_000, T: now - 60_001, c: String(prices[i]), s: symbol }));
+    assert.deepEqual(candlePoints(history, now, asset.symbol).map(({ close }) => close), [bid]);
+  }
+});
 
 test('price is the unrounded midpoint; invalid, crossed, stale-order and future frames are rejected', () => {
   const quote = bookQuote(book, now, null)!;
@@ -28,6 +56,8 @@ test('history uses closed candle timestamps in seconds and excludes future/unfin
   const points = candlePoints([
     { t: now - 120_000, T: now - 60_001, c: '67000', s: 'BTC' },
     { t: now, T: now + 59_999, c: '67002', s: 'BTC' },
+    { t: NaN, T: now - 1, c: '67002', s: 'BTC' },
+    { t: now - 60_000, T: NaN, c: '67002', s: 'BTC' },
   ], now);
   assert.equal(points.length, 1);
   assert.equal(points[0].time, Math.floor((now - 60_001) / 1_000));

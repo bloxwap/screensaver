@@ -1,6 +1,8 @@
 import type { Candle } from '@bloxwap/chart';
+import { DEFAULT_ASSET, type AssetSymbol } from '../assets';
 
-export const ASSET = { symbol: 'BTC', name: 'Bitcoin', url: 'https://bloxwap.app/trade/BTC' } as const;
+/** Compatibility for callers that have not yet selected an edition. */
+export const ASSET = { ...DEFAULT_ASSET, url: DEFAULT_ASSET.tradeUrl } as const;
 export const HISTORY_MS = 60 * 60_000;
 export const STALE_MS = 15_000;
 export const MAX_POINTS = 3_700;
@@ -34,10 +36,10 @@ export function positive(value: unknown): number | null {
 /** Use the same unrounded best-bid / best-ask midpoint as the Bloxwap live chart. */
 export function bookQuote(book: {
   coin: string; time: number; levels: [{ px: string }[], { px: string }[]];
-}, now: number, previous: Quote | null): Quote | null {
+}, now: number, previous: Quote | null, symbol: AssetSymbol = DEFAULT_ASSET.symbol): Quote | null {
   const bid = positive(book.levels[0][0]?.px);
   const ask = positive(book.levels[1][0]?.px);
-  if (book.coin !== ASSET.symbol || bid === null || ask === null || bid > ask) return null;
+  if (book.coin !== symbol || bid === null || ask === null || bid > ask) return null;
   if (!Number.isFinite(book.time) || book.time <= 0 || book.time > now + 5_000) return null;
   if (previous && book.time <= previous.time) return null;
   return { price: (bid + ask) / 2, time: book.time, receivedAt: now };
@@ -60,11 +62,11 @@ export function mergePoints(history: PricePoint[], live: PricePoint[], now: numb
   return [...points.values()].sort((a, b) => a.time - b.time).slice(-MAX_POINTS);
 }
 
-export function candlePoints(candles: { t: number; T: number; c: string; s: string }[], now: number): PricePoint[] {
+export function candlePoints(candles: { t: number; T: number; c: string; s: string }[], now: number, symbol: AssetSymbol = DEFAULT_ASSET.symbol): PricePoint[] {
   return candles.flatMap((candle) => {
     const close = positive(candle.c);
     // Only closed candles have a known closing time. Never date an unfinished candle into the future.
-    if (candle.s !== ASSET.symbol || close === null || candle.T > now || candle.T < candle.t) return [];
+    if (candle.s !== symbol || close === null || !Number.isFinite(candle.t) || !Number.isFinite(candle.T) || candle.T > now || candle.T < candle.t) return [];
     return [toPoint(candle.T, close, 'history')];
   });
 }

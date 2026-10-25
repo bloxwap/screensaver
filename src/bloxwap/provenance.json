@@ -62,6 +62,27 @@
       "destination": "public/brand/SpaceGrotesk-OFL.txt",
       "sourceSha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72",
       "sha256": "18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943"
+    },
+    {
+      "source": "packages/markets/svg/SOL.svg",
+      "destination": "public/brand/SOL.svg",
+      "sourceCommit": "fb626f7cd1e04a6fd7543bb9f0c43277059dcda9",
+      "sourceSha256": "a34f98bc24dbe214c5bbeb760e4eaf927dae5c4ab365658d0c7a5ef5ae5b0197",
+      "sha256": "a34f98bc24dbe214c5bbeb760e4eaf927dae5c4ab365658d0c7a5ef5ae5b0197"
+    },
+    {
+      "source": "packages/markets/svg/ETH.svg",
+      "destination": "public/brand/ETH.svg",
+      "sourceCommit": "fb626f7cd1e04a6fd7543bb9f0c43277059dcda9",
+      "sourceSha256": "e90664708ed75ac163229a56f17dc6b44e91f078f14fd40f21c5659dff1a8dd9",
+      "sha256": "e90664708ed75ac163229a56f17dc6b44e91f078f14fd40f21c5659dff1a8dd9"
+    },
+    {
+      "source": "packages/markets/svg/HYPE.svg",
+      "destination": "public/brand/HYPE.svg",
+      "sourceCommit": "fb626f7cd1e04a6fd7543bb9f0c43277059dcda9",
+      "sourceSha256": "0bed6f24e6c45a5462aa3b28cc698dec33128f986df3d3ad02bf742f9bb0df76",
+      "sha256": "0bed6f24e6c45a5462aa3b28cc698dec33128f986df3d3ad02bf742f9bb0df76"
     }
   ]
 }

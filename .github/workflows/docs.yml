@@ -1,0 +1,125 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Verified GitHub Release tag to display (empty selects the latest available release)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# PR builds can replace an earlier check. Deployments serialize so a release
+# refresh cannot race a default-branch publication.
+concurrency:
+  group: website-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_PUBLIC_BASE_PATH: /screensaver
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Resolve verified public downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            node scripts/fetch-release.mjs --tag "$RELEASE_TAG"
+          else
+            node scripts/fetch-release.mjs
+          fi
+      - run: npm run docs:check
+      - run: npm run docs:build
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:site
+      - uses: actions/upload-pages-artifact@v5
+        if: github.event_name != 'pull_request'
+        with:
+          path: apps/docs/out
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: website-failures
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
+  deploy:
+    if: (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check the selected branch build is current
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          BUILD_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          current_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)"
+          if [ "$current_sha" != "$BUILD_SHA" ]; then
+            echo 'The selected branch has a newer commit; skip this older build.'
+            echo 'deploy=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'deploy=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/configure-pages@v6
+        if: steps.current.outputs.deploy == 'true'
+      - uses: actions/deploy-pages@v5
+        if: steps.current.outputs.deploy == 'true'
+        id: deployment
+
+  smoke:
+    needs: deploy
+    if: needs.deploy.outputs.page_url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOCS_URL: ${{ needs.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:site
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: deployed-website-failures
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore

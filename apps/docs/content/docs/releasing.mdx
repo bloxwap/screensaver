@@ -1,0 +1,47 @@
+---
+title: Releasing
+description: Build public preview downloads and prepare a verified stable release.
+---
+
+The **Desktop installers** workflow builds four editions across Mac Apple silicon/Intel, Windows x64, and Linux x64. Releases include installers, `SHA256SUMS`, and `release-manifest.json`.
+
+## Preview releases
+
+Relevant changes on `main` automatically produce unsigned preview prereleases. Pull requests build representative platform/architecture candidates without publishing.
+
+Start a full preview manually, replacing `BRANCH` with the intended branch:
+
+```sh
+gh workflow run desktop.yml --ref BRANCH -f publish=true
+```
+
+Use `-f publish=false` for a build-only run. Preview builds remain labeled unsigned in the manifest, release notes, and website.
+
+## Stable releases
+
+Stable publication uses a version tag matching `package.json`, such as `v0.1.0`. The complete expected matrix and Mac/Windows signing verification must pass before publication.
+
+Credentials belong in the release environment, and pull-request builds do not need them. See [signing setup](https://github.com/bloxwap/screensaver/blob/main/.github/SIGNING.md) for required credentials and verification commands.
+
+Native install, launch, tray, idle, and uninstall checks remain part of release verification. A successful packaging job alone does not establish those behaviors.
+
+## Download metadata
+
+The manifest records each artifact's asset, OS, architecture, version, public URL, filename, byte size, checksum, and signing status. Names follow:
+
+```text
+bloxwap-screensaver-{asset-slug}-{version}-{os}-{arch}.{format}
+```
+
+The complete matrix has 28 files: DMG and ZIP for two Mac architectures, one Windows installer, and AppImage and DEB for Linux, for each of four assets.
+
+Publication refreshes GitHub Pages with the verified manifest. Links point to a specific public GitHub Release; visitors do not need GitHub sign-in. Failed or incomplete builds do not replace the current download list.
+
+For a local site build, fetch the latest valid stable release, or the latest preview when no stable release exists:
+
+```sh
+node scripts/fetch-release.mjs
+npm run docs:build
+```
+
+Use `--tag TAG` to select a release. See the [release runbook](https://github.com/bloxwap/screensaver/blob/main/RELEASE.md) for reruns, rollback, and evidence to record before closing release tasks.

@@ -1,19 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import NumberFlow from '@number-flow/react';
 import { createChart, createSeriesRegistry, type Chart, type SeriesDrawFn } from '@bloxwap/chart';
-import { CHART_ANIM_MS, FLOW_PX_PER_SEC, TICK_PX, evalBezier, labelDecimalsFor, tickSpacingFor, writeSmoothPath } from '../bloxwap/chart-math';
+import { FLOW_PX_PER_SEC, TICK_PX, labelDecimalsFor, tickSpacingFor, writeSmoothPath } from '../bloxwap/chart-math';
+import { advanceChartPresentation, createChartPresentation } from './chart-presentation';
 import { BrandWordmark } from '../bloxwap/BrandWordmark';
+import { DEFAULT_ASSET, type Asset } from '../assets';
 import type { PricePoint, Quote } from '../market/model';
 
 // Keep the trading screen's edge scale; reserve the measured width of the larger readout.
 const EDGE = 18;
 
-export function LiveChart({ points, quote, windowMinutes, live, now }: {
-  points: PricePoint[]; quote: Quote | null; windowMinutes: number; live: boolean; now: number;
+export function LiveChart({ asset = DEFAULT_ASSET, points, quote, windowMinutes, live, now }: {
+  asset?: Asset; points: PricePoint[]; quote: Quote | null; windowMinutes: number; live: boolean; now: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const markerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
+  const [readoutPrice, setReadoutPrice] = useState<number | null>(null);
   const latest = useRef({ quote, windowMinutes, live, now });
   latest.current = { quote, windowMinutes, live, now };
 
@@ -25,33 +28,44 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
     let width = host.clientWidth, height = host.clientHeight;
     let markerWidth = marker.offsetWidth, markerHeight = marker.offsetHeight;
     let density = 1;
-    let shownPrice = 0, fromPrice = 0, targetPrice = 0, tweenStart = 0;
+    const presentation = createChartPresentation();
     const draw: SeriesDrawFn = (ctx, candles) => {
+      if (document.hidden) return;
       ctx.clearRect(0, 0, width, height);
       const { quote, windowMinutes, live, now } = latest.current;
       const price = quote?.price ?? candles.at(-1)?.close;
       if (price === undefined) return;
       const frameTime = performance.now();
-      if (targetPrice !== price) {
-        fromPrice = shownPrice || price;
-        targetPrice = price;
-        tweenStart = frameTime;
+      if (quote) {
+        const sampledPrice = advanceChartPresentation(presentation, price, frameTime, live ? Date.now() : quote.time, live, motion.matches);
+        setReadoutPrice(sampledPrice);
       }
-      shownPrice = motion.matches ? price : fromPrice + (price - fromPrice) * evalBezier(Math.min(1, (frameTime - tweenStart) / CHART_ANIM_MS));
+      const shownPrice = quote ? presentation.value : price;
       const centerY = height / 2;
+      // NumberFlow can change the pill's width between React commits.
+      markerWidth = marker.getBoundingClientRect().width;
+      markerHeight = marker.offsetHeight;
       const trailEnd = Math.max(EDGE + 40, width - 8 - markerWidth + 1);
-      const end = live ? (motion.matches ? now : Date.now()) : (quote?.time ?? now);
+      const end = quote ? presentation.time : now;
       const tickPixels = TICK_PX * density;
       const pxPerSecond = windowMinutes ? (trailEnd - EDGE) / (windowMinutes * 60) : FLOW_PX_PER_SEC * density;
       const start = end - (trailEnd - EDGE) / pxPerSecond * 1_000;
       // Retain the observation immediately before the viewport for a continuous entry.
-      let first = candles.findIndex((point) => point.time * 1_000 >= start);
-      first = first < 0 ? Math.max(0, candles.length - 1) : Math.max(0, first - 1);
-      const visible = candles.slice(first);
+      // Replace the recent raw-price segment with the eased 200ms trail, as in the app.
+      // Older observations still supply the extended history windows.
+      const samples = presentation.ticks;
+      const sampleStart = samples.length ? Math.floor(samples[0].t / 1_000) * 1_000 : Infinity;
+      const trail = [
+        ...candles.filter((point) => point.time * 1_000 < sampleStart).map((point) => ({ t: point.time * 1_000, p: point.close })),
+        ...samples,
+      ];
+      let first = trail.findIndex((point) => point.t >= start);
+      first = first < 0 ? Math.max(0, trail.length - 1) : Math.max(0, first - 1);
+      const visible = trail.slice(first);
       let spacing = tickSpacingFor(shownPrice);
       if (windowMinutes) {
         // Longer history remains readable while retaining the same 44px price tape.
-        const halfRange = Math.max(spacing, ...visible.map((point) => Math.abs(point.close - shownPrice)));
+        const halfRange = Math.max(spacing, ...visible.map((point) => Math.abs(point.p - shownPrice)));
         spacing = Math.max(spacing, Math.ceil(halfRange * 2.3 / height * tickPixels * 100) / 100);
       }
       const yFor = (value: number) => centerY - (value - shownPrice) / spacing * tickPixels;
@@ -74,9 +88,9 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
         if (Math.abs(y - centerY) > markerHeight / 2 + 12) ctx.fillText(value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }), width - 32, y);
       }
       ctx.stroke();
-      const path: [number, number][] = visible.map((point) => [xFor(point.time * 1_000), yFor(point.close)]);
-      // The endpoint is the last observed book price. Only the display geometry is tweened.
-      if (quote) path.push([xFor(quote.time), yFor(quote.price)]);
+      const tipY = yFor(shownPrice);
+      marker.style.top = `${tipY}px`;
+      const path: [number, number][] = visible.map((point) => [xFor(point.t), yFor(point.p)]);
       const distinct = path.filter((point, index) => index === 0 || point[0] > path[index - 1][0]);
       if (!distinct.length) return;
       ctx.save();
@@ -100,7 +114,7 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
       if (quote) {
         const [x, y] = distinct.at(-1)!;
         const dx = Math.max(0, trailEnd - x);
-        ctx.bezierCurveTo(x + dx / 3, y, trailEnd - dx / 3, centerY, trailEnd, centerY);
+        ctx.bezierCurveTo(x + dx / 3, y, trailEnd - dx / 3, tipY, trailEnd, tipY);
       }
       ctx.stroke();
       ctx.restore();
@@ -121,7 +135,6 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
       width = host.clientWidth; height = host.clientHeight;
       markerWidth = marker.offsetWidth; markerHeight = marker.offsetHeight;
       density = Number(getComputedStyle(host).getPropertyValue('--chart-scale')) || 1;
-      host.parentElement!.style.setProperty('--price-reserve', `${markerWidth + 8}px`);
       chart.resize(width, height, Math.min(window.devicePixelRatio || 1, 2));
     };
     const observer = new ResizeObserver(resize);
@@ -137,21 +150,32 @@ export function LiveChart({ points, quote, windowMinutes, live, now }: {
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
+    const resetAnimation = () => {
+      presentation.value = NaN;
+      if (!document.hidden) chart.render();
+    };
+    document.addEventListener('visibilitychange', resetAnimation);
+    motion.addEventListener('change', resetAnimation);
     void document.fonts.ready.then(() => { if (chartRef.current === chart) chart.render(); });
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); chartRef.current = null; chart.destroy(); };
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect();
+      document.removeEventListener('visibilitychange', resetAnimation);
+      motion.removeEventListener('change', resetAnimation);
+      chartRef.current = null; chart.destroy();
+    };
   }, []);
 
   useEffect(() => { chartRef.current?.setData(points); }, [points]);
   useEffect(() => { chartRef.current?.render(); }, [quote, windowMinutes, live, now]);
   const summary = quote
-    ? `Bitcoin ${quote.price.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. ${live ? 'Live Hyperliquid bid/ask midpoint.' : 'Last observed price; feed is not live.'}`
-    : 'Waiting for a live Bitcoin price. The trail shows available price observations.';
-  return <section className="chart-region" aria-label={`Bitcoin price chart, ${windowMinutes ? `last ${windowMinutes} minutes` : 'live view'}`} aria-describedby="chart-summary">
+    ? `${asset.name} ${quote.price.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. ${live ? 'Live Hyperliquid bid/ask midpoint.' : 'Last observed price; feed is not live.'}`
+    : `Waiting for a live ${asset.name} price. The trail shows available price observations.`;
+  return <section className="chart-region" aria-label={`${asset.name} price chart, ${windowMinutes ? `last ${windowMinutes} minutes` : 'live view'}`} aria-describedby="chart-summary">
     <p id="chart-summary" className="sr-only">{summary}</p>
     <div className="brand-watermark"><BrandWordmark capHeight={36} letters="currentColor" x="currentColor" /></div>
-    <div className="chart-plot"><canvas ref={canvasRef} aria-label="Bitcoin price trail and altitude scale" role="img" /></div>
-    <div ref={markerRef} className="current-marker" data-testid="price" role="img" aria-label={quote ? `Bitcoin ${quote.price.toFixed(2)} US dollars` : 'Waiting for Bitcoin price'}>
-      <span aria-hidden="true">{quote ? <NumberFlow value={quote.price} locales="en-US" format={{ style: 'currency', currency: 'USD' }} transformTiming={{ duration: 300, easing: 'ease-in-out' }} /> : '—'}</span>
+    <div className="chart-plot"><canvas ref={canvasRef} aria-label={`${asset.name} price trail and altitude scale`} role="img" /></div>
+    <div ref={markerRef} className="current-marker" data-testid="price" role="img" aria-label={quote ? `${asset.name} ${quote.price.toFixed(2)} US dollars` : `Waiting for ${asset.name} price`}>
+      <span aria-hidden="true">{quote ? <NumberFlow value={readoutPrice ?? quote.price} locales="en-US" format={{ style: 'currency', currency: 'USD' }} transformTiming={{ duration: 300, easing: 'ease-in-out' }} /> : '—'}</span>
     </div>
     {!points.length && <span className="chart-empty">Waiting for market data</span>}
   </section>;

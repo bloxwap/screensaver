@@ -1,33 +1,190 @@
 name: Desktop installers
+
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'src/**'
+      - 'desktop/**'
+      - 'public/**'
+      - 'config/assets.json'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'electron-builder.config.cjs'
+      - 'index.html'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'desktop/**'
+      - 'public/**'
+      - 'config/assets.json'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'electron-builder.config.cjs'
+      - 'index.html'
+      - '.github/workflows/desktop.yml'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a complete unsigned preview release and refresh the website
+        type: boolean
+        default: true
+
 permissions:
   contents: read
+
+concurrency:
+  group: desktop-${{ github.event.pull_request.number || github.ref }}
+  # Never interrupt a partially uploaded release. New source commits queue behind it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      channel: ${{ steps.plan.outputs.channel }}
+      tag: ${{ steps.plan.outputs.tag }}
+      publish: ${{ steps.plan.outputs.publish }}
+      docs_ref: ${{ steps.plan.outputs.docs_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Plan native builds and immutable release tag
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const assets = JSON.parse(readFileSync('config/assets.json', 'utf8'));
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const stable = process.env.GITHUB_REF.startsWith('refs/tags/');
+          if (stable) {
+            if (process.env.GITHUB_REF_NAME !== `v${version}` || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Stable tags must exactly match the package version');
+            execFileSync('git', ['merge-base', '--is-ancestor', process.env.GITHUB_SHA, `origin/${process.env.DEFAULT_BRANCH}`]);
+          }
+          const targets = [
+            { platform: 'macos', arch: 'arm64', runner: 'macos-15' },
+            { platform: 'macos', arch: 'x64', runner: 'macos-15-intel' },
+            { platform: 'windows', arch: 'x64', runner: 'windows-2025' },
+            { platform: 'linux', arch: 'x64', runner: 'ubuntu-24.04' },
+          ];
+          const pr = process.env.EVENT_NAME === 'pull_request';
+          const editions = pr ? assets.filter((asset) => asset.symbol === 'BTC') : assets;
+          const tag = stable ? process.env.GITHUB_REF_NAME : `preview-v${version}-${process.env.GITHUB_SHA.slice(0, 7)}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
+          const publish = !pr && (process.env.EVENT_NAME === 'push' || process.env.INPUT_PUBLISH === 'true');
+          const output = {
+            matrix: JSON.stringify({ include: editions.flatMap((asset) => targets.map((target) => ({ asset: asset.symbol, slug: asset.slug, ...target }))) }),
+            channel: stable ? 'stable' : 'preview', tag, publish: String(publish),
+            docs_ref: stable ? process.env.DEFAULT_BRANCH : process.env.GITHUB_REF_NAME,
+          };
+          appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(output).map(([key, value]) => `${key}=${value}\n`).join(''));
+          NODE
+
   build:
+    needs: prepare
+    name: ${{ matrix.asset }} · ${{ matrix.platform }} · ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    environment: ${{ needs.prepare.outputs.channel == 'stable' && 'desktop-release' || 'desktop-preview' }}
     strategy:
       fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      SCREENSAVER_RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+      CSC_IDENTITY_AUTO_DISCOVERY: ${{ needs.prepare.outputs.channel == 'stable' && 'true' || 'false' }}
+      # Pull requests and unsigned preview builds never receive signing credentials.
+      CSC_LINK: ${{ needs.prepare.outputs.channel == 'stable' && secrets.CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ needs.prepare.outputs.channel == 'stable' && secrets.CSC_KEY_PASSWORD || '' }}
+      WIN_CSC_LINK: ${{ needs.prepare.outputs.channel == 'stable' && secrets.WIN_CSC_LINK || '' }}
+      WIN_CSC_KEY_PASSWORD: ${{ needs.prepare.outputs.channel == 'stable' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+      APPLE_ID: ${{ needs.prepare.outputs.channel == 'stable' && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ needs.prepare.outputs.channel == 'stable' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ needs.prepare.outputs.channel == 'stable' && secrets.APPLE_TEAM_ID || '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Check distribution prerequisites
+        run: node scripts/signing-preflight.mjs --platform '${{ matrix.platform }}' --channel "$SCREENSAVER_RELEASE_CHANNEL"
       - run: npm test
-      - run: npm run desktop:dist
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
+      - name: Build edition installers
+        run: npm run desktop:dist -- --asset '${{ matrix.asset }}' --arch '${{ matrix.arch }}'
+      - name: Verify packaged distribution status
+        run: node scripts/verify-signing.mjs --platform '${{ matrix.platform }}' --channel "$SCREENSAVER_RELEASE_CHANNEL" --directory 'release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}'
+      - uses: actions/upload-artifact@v7
         with:
-          name: screensaver-${{ matrix.os }}
+          name: desktop-${{ matrix.asset }}-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            release/*.dmg
-            release/*.zip
-            release/*.exe
-            release/*.AppImage
-            release/*.deb
+            release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}/*.dmg
+            release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}/*.zip
+            release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}/*.exe
+            release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}/*.AppImage
+            release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}/*.deb
+            release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}/signing.json
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ needs.prepare.outputs.channel == 'stable' && 'desktop-release' || 'desktop-preview' }}
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+      DOCS_REF: ${{ needs.prepare.outputs.docs_ref }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: release
+          merge-multiple: false
+      - name: Require the complete matrix and generate checksums
+        run: node scripts/release-manifest.mjs --directory release --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL"
+      - name: Upload and verify a draft before making downloads public
+        run: node scripts/publish-release.mjs --directory release --metadata release-metadata --target "$GITHUB_SHA"
+      - name: Verify public release metadata
+        run: node scripts/fetch-release.mjs --tag "$RELEASE_TAG" --output release-metadata/public-manifest.json
+      - name: Refresh the download website
+        # GITHUB_TOKEN release events do not start another workflow; dispatch explicitly.
+        # A new preview must not replace an existing stable download selection.
+        shell: bash
+        run: |
+          if [ "$RELEASE_CHANNEL" = stable ]; then
+            gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref "$DOCS_REF" -f release_tag="$RELEASE_TAG"
+          else
+            gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref "$DOCS_REF"
+          fi

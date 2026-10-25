@@ -7,7 +7,7 @@ export function useDisplay() {
   const [awake, setAwake] = useState(false);
   const [message, setMessage] = useState('');
   const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
-  const automatic = new URLSearchParams(location.search).get('mode') === 'idle';
+  const automatic = Boolean(window.screensaver) && new URLSearchParams(location.search).get('mode') === 'idle';
 
   useEffect(() => {
     const clock = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 1_000);
@@ -40,22 +40,47 @@ export function useDisplay() {
   useEffect(() => {
     if (!awake || automatic) return;
     let cancelled = false;
+    let active = true;
+    let pending = false;
+    let resumePending = false;
     let lock: WakeLockSentinel | null = null;
     const acquire = async () => {
-      if (document.hidden || (lock && !lock.released)) return;
+      if (cancelled || !active || document.hidden || (lock && !lock.released)) return;
+      if (pending) { resumePending = true; return; }
+      pending = true;
       try {
+        if (!('wakeLock' in navigator)) throw new Error('Wake lock unavailable');
         const next = await navigator.wakeLock.request('screen');
-        if (cancelled) await next.release(); else lock = next;
+        if (cancelled || !active || document.hidden) await next.release(); else lock = next;
       } catch {
-        if (!cancelled) { setAwake(false); setMessage('This device could not keep the screen awake.'); }
+        // A denied request needs another explicit opt-in, not an automatic retry loop.
+        resumePending = false;
+        if (!cancelled && active && !document.hidden) { setAwake(false); setMessage('This device could not keep the screen awake.'); }
+      } finally {
+        pending = false;
+        // A restored page may have asked for a lock while the previous hidden-page
+        // request was still releasing. Revisit that request once cleanup settles.
+        if (resumePending) { resumePending = false; void acquire(); }
       }
     };
+    const release = () => {
+      const previous = lock;
+      lock = null;
+      void previous?.release().catch(() => { /* A browser may already have released it. */ });
+    };
+    const visibility = () => { if (document.hidden) release(); else void acquire(); };
+    const leave = () => { active = false; release(); };
+    const resume = () => { active = true; void acquire(); };
     void acquire();
-    document.addEventListener('visibilitychange', acquire);
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('pagehide', leave);
+    window.addEventListener('pageshow', resume);
     return () => {
       cancelled = true;
-      document.removeEventListener('visibilitychange', acquire);
-      void lock?.release();
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('pagehide', leave);
+      window.removeEventListener('pageshow', resume);
+      release();
     };
   }, [awake, automatic]);
 

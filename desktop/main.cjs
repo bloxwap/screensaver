@@ -3,10 +3,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { DEFAULT_SETTINGS, validateSettings, idleAction } = require('./idle.cjs');
+const { loadEdition, editionIdentity, editionQuery, isEditionPage } = require('./edition.cjs');
+
+const edition = loadEdition({ isPackaged: app.isPackaged, desktopDirectory: __dirname });
+const identity = editionIdentity(edition, app.getPath('appData'));
+// Set all edition-specific paths before Chromium initializes or the singleton lock
+// is acquired, so two asset editions keep independent sessions and preferences.
+app.setName(identity.productName);
+fs.mkdirSync(identity.sessionData, { recursive: true });
+app.setPath('userData', identity.userData);
+app.setPath('sessionData', identity.sessionData);
+if (process.platform === 'win32') app.setAppUserModelId(identity.appId);
 
 const index = path.join(__dirname, '../dist/index.html');
 const pageURL = pathToFileURL(index).href;
-const allowedOrigins = new Set(['https://bloxwap.app', 'https://github.com']);
+const allowedOrigins = new Set(['https://bloxwap.app', 'https://github.com', 'https://bloxwap.github.io']);
 let settings = { ...DEFAULT_SETTINGS };
 let mainWindow = null;
 let tray = null;
@@ -18,7 +29,7 @@ let cooldownUntil = 0;
 let timer;
 
 function settingsFile() { return path.join(app.getPath('userData'), 'preferences.json'); }
-function trusted(event) { return event.senderFrame === event.sender.mainFrame && event.senderFrame.url.split('?')[0] === pageURL; }
+function trusted(event) { return Boolean(event.senderFrame) && event.senderFrame === event.sender.mainFrame && isEditionPage(event.senderFrame.url, pageURL, edition); }
 
 function openExternal(url) {
   try {
@@ -30,14 +41,14 @@ function openExternal(url) {
 function makeWindow(options = {}) {
   const window = new BrowserWindow({
     width: 1440, height: 900, minWidth: 360, minHeight: 580,
-    backgroundColor: '#0a0a0a', title: 'Bloxwap Screensaver', show: false,
+    backgroundColor: '#0a0a0a', title: identity.productName, show: false,
     autoHideMenuBar: true,
     ...options,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
   window.webContents.setWindowOpenHandler(({ url }) => { openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, url) => {
-    if (url.split('?')[0] !== pageURL) { event.preventDefault(); openExternal(url); }
+    if (!isEditionPage(url, pageURL, edition)) { event.preventDefault(); openExternal(url); }
   });
   return window;
 }
@@ -51,7 +62,7 @@ function showMain() {
     if (!quitting && settings.idleEnabled && tray) { event.preventDefault(); mainWindow.hide(); }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
-  void mainWindow.loadFile(index);
+  void mainWindow.loadFile(index, { query: editionQuery(edition) });
 }
 
 function dismissIdle() {
@@ -71,14 +82,14 @@ function startIdle(preview = false) {
     idleWindows.push(window);
     window.once('ready-to-show', () => { if (!window.isDestroyed() && !locked) window.show(); });
     window.on('close', () => { if (!quitting) setImmediate(dismissIdle); });
-    void window.loadFile(index, { query: { mode: 'idle' } });
+    void window.loadFile(index, { query: editionQuery(edition, true) });
   }
 }
 
 function updateTray() {
   tray?.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Bloxwap Screensaver', click: showMain },
-    { label: 'Preview screensaver', click: () => startIdle(true) },
+    { label: `Open ${identity.productName}`, click: showMain },
+    { label: `Preview ${edition.name}`, click: () => startIdle(true) },
     { type: 'separator' },
     { label: `Start after ${settings.idleMinutes} minutes idle`, type: 'checkbox', checked: settings.idleEnabled, click: (item) => {
       try { saveSettings({ ...settings, idleEnabled: item.checked }); } catch { showMain(); }
@@ -101,20 +112,20 @@ function saveSettings(next) {
   return { ...settings };
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!app.requestSingleInstanceLock({ asset: edition.symbol })) app.quit();
 else {
   app.on('second-instance', showMain);
   app.whenReady().then(() => {
     try { settings = validateSettings(JSON.parse(fs.readFileSync(settingsFile(), 'utf8'))); } catch { /* First launch uses defaults. */ }
     session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => {
-      callback(permission === 'screen-wake-lock' && contents.getURL().split('?')[0] === pageURL);
+      callback(permission === 'screen-wake-lock' && isEditionPage(contents.getURL(), pageURL, edition));
     });
-    session.defaultSession.setPermissionCheckHandler((contents, permission) => permission === 'screen-wake-lock' && contents?.getURL().split('?')[0] === pageURL);
+    session.defaultSession.setPermissionCheckHandler((contents, permission) => permission === 'screen-wake-lock' && Boolean(contents) && isEditionPage(contents.getURL(), pageURL, edition));
     try {
       const icon = nativeImage.createFromPath(path.join(__dirname, '../dist/trayTemplate.png'));
       if (process.platform === 'darwin') icon.setTemplateImage(true);
       tray = new Tray(icon);
-      tray.setToolTip('Bloxwap Screensaver');
+      tray.setToolTip(identity.productName);
       tray.on('double-click', showMain);
       updateTray();
     } catch { settings.idleEnabled = false; }

@@ -2,13 +2,23 @@ import { HttpTransport } from '@bloxwap/hyperliquid/transport/http';
 import { WebSocketTransport } from '@bloxwap/hyperliquid/transport/websocket';
 import { InfoClient } from '@bloxwap/hyperliquid/api/info/client';
 import { SubscriptionClient } from '@bloxwap/hyperliquid/api/subscription/client';
-import { ASSET, HISTORY_MS, bookQuote, candlePoints, initialSnapshot, mergePoints, positive, toPoint, type MarketSnapshot } from './model';
+import { DEFAULT_ASSET, getAsset, type Asset } from '../assets';
+import { HISTORY_MS, bookQuote, candlePoints, initialSnapshot, mergePoints, positive, toPoint, type MarketSnapshot } from './model';
+
+export type FeedServices = {
+  info: Pick<InfoClient, 'candleSnapshot'>;
+  createTransport: () => WebSocketTransport;
+  createSubscriptions: (transport: WebSocketTransport) => Pick<SubscriptionClient, 'l2Book' | 'activeAssetCtx'>;
+};
 
 /** One read-only connection shared by the price, chart and market summary. */
-export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void): () => void {
+export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void, asset: Asset = DEFAULT_ASSET, services: Partial<FeedServices> = {}): () => void {
+  const symbol = getAsset(asset.symbol).symbol;
   const abort = new AbortController();
-  const info = new InfoClient({ transport: new HttpTransport({ timeout: 10_000 }) });
-  let state = initialSnapshot();
+  const info = services.info ?? new InfoClient({ transport: new HttpTransport({ timeout: 10_000 }) });
+  const createTransport = services.createTransport ?? (() => new WebSocketTransport());
+  const createSubscriptions = services.createSubscriptions ?? ((transport: WebSocketTransport) => new SubscriptionClient({ transport }));
+  const state = initialSnapshot();
   let transport: WebSocketTransport | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let historyFlight = false;
@@ -23,10 +33,10 @@ export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void): ()
     lastHistoryAttempt = Date.now();
     try {
       const now = Date.now();
-      const candles = await info.candleSnapshot({ coin: ASSET.symbol, interval: '1m', startTime: now - HISTORY_MS, endTime: now }, { signal: abort.signal });
+      const candles = await info.candleSnapshot({ coin: symbol, interval: '1m', startTime: now - HISTORY_MS, endTime: now }, { signal: abort.signal });
       if (stopped) return;
       // A slow HTTP response cannot replace more recent WebSocket observations.
-      state.points = mergePoints(candlePoints(candles, Date.now()), state.points.filter((p) => p.source === 'live'), Date.now());
+      state.points = mergePoints(candlePoints(candles, Date.now(), symbol), state.points.filter((p) => p.source === 'live'), Date.now());
       state.historyError = false;
       emit();
     } catch {
@@ -40,12 +50,12 @@ export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void): ()
     const previous = transport;
     transport = null;
     previous?.close();
-    const current = new WebSocketTransport();
+    const current = createTransport();
     transport = current;
     lastRestart = Date.now();
     state.connection = state.quote ? 'reconnecting' : 'connecting';
     emit();
-    const subscriptions = new SubscriptionClient({ transport: current });
+    const subscriptions = createSubscriptions(current);
     current.events.addEventListener('connectionstatechange', (event) => {
       if (stopped || current !== transport) return;
       state.connection = event.detail;
@@ -56,9 +66,9 @@ export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void): ()
       if (event.detail === 'disconnected') retry = setTimeout(connect, 5_000);
       emit();
     });
-    void subscriptions.l2Book({ coin: ASSET.symbol, fast: true }, (book) => {
+    void subscriptions.l2Book({ coin: symbol, fast: true }, (book) => {
       if (stopped || current !== transport) return;
-      const quote = bookQuote(book, Date.now(), state.quote);
+      const quote = bookQuote(book, Date.now(), state.quote, symbol);
       if (!quote) return;
       state.quote = quote;
       state.points = mergePoints(state.points, [toPoint(quote.time, quote.price, 'live')], Date.now());
@@ -70,8 +80,8 @@ export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void): ()
       clearTimeout(retry);
       retry = setTimeout(connect, 5_000);
     });
-    void subscriptions.activeAssetCtx({ coin: ASSET.symbol }, ({ ctx }) => {
-      if (stopped || current !== transport) return;
+    void subscriptions.activeAssetCtx({ coin: symbol }, ({ coin, ctx }) => {
+      if (stopped || current !== transport || coin !== symbol) return;
       state.previousDay = positive(ctx.prevDayPx);
       state.dayVolume = positive(ctx.dayNtlVlm);
       emit();
@@ -96,6 +106,7 @@ export function startMarketFeed(publish: (snapshot: MarketSnapshot) => void): ()
   connect();
   void history();
   return () => {
+    if (stopped) return;
     stopped = true;
     clearInterval(monitor);
     clearTimeout(retry);

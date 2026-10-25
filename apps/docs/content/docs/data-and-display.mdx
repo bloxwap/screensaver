@@ -1,0 +1,40 @@
+---
+title: Data and display
+description: How quotes, chart history, motion, and trade QR codes work.
+---
+
+Every edition shares one renderer and selects its public Hyperliquid market: BTC, SOL, ETH, or HYPE. The displayed value is an order-book midpoint in US dollars. Its QR opens that asset on Bloxwap.
+
+## Quotes and history
+
+`@bloxwap/hyperliquid` opens one mainnet WebSocket per display. A fast `l2Book` subscription supplies the unrounded `(best bid + best ask) / 2`, matching Bloxwap's midpoint convention. `activeAssetCtx` supplies the previous-day price and 24-hour USD volume.
+
+HTTP `candleSnapshot` seeds one hour of actual closed one-minute trade candles. Stored history then records observed live midpoints. These are related price series, but measure different things. Live book updates supply the quoted price and freshness indicator.
+
+Bid/ask values, asset identity, timestamps, and frame ordering are validated. An open connection alone does not make a quote live: it must arrive after the current connection opens and remain fresh. The freshness window is 15 seconds. Keep device clocks synchronized.
+
+The SDK reconnects and resubscribes. The app refreshes history after reconnect, retries failed subscriptions and history, and rebuilds a silent connection after 30 seconds. Late history cannot overwrite newer live samples. Changing the selected asset resets state and disposes its old feed.
+
+Stored market history is bounded to one hour and 3,700 points. Market prices are never cached or fabricated. An interrupted session can retain its last observation with a stale/offline indicator; a cold offline launch waits for a connection.
+
+## Chart motion
+
+Charts use `@bloxwap/chart` with a custom series renderer based on Bloxwap's monotone-spline and altimeter math. Live view uses a 50px/second flow and 44px price-tick spacing, scaled together by 1.5× on large displays.
+
+One 300ms display-price tween drives the scale, trail tip, and pill position. The recent trail and pill readout sample that eased value every 200ms. Fast quotes retarget the tween without restarting its clock. The 5-minute, 15-minute, and 1-hour views combine this recent trail with older observed history.
+
+Display samples never replace market observations. A line between observations is visual interpolation, not a claim that trades occurred in the gap.
+
+Eased display samples retain one minute. Display work pauses while hidden and snaps to the current quote on resume. Canvas resolution is capped at 2× and continuous flow at 30fps. Reduced-motion preferences snap to observed quotes without tweening or continuous motion.
+
+## Trade QR
+
+The QR uses white SVG modules on near-black (`#0a0a0a`) with Q-level error correction. Its compact layout uses a two-module SVG margin plus 4pt of wrapper padding, with finder patterns clear of rounded clipping. This is tighter than [DENSO's standard four-module quiet zone](https://www.qrcode.com/en/howto/code.html); verify scanning on the intended display and camera.
+
+The QR renders at 410px on desktop and 492px on large displays, with smaller sizes fitted to mobile and landscape layouts. Its card radius derives from the QR radius, padding, and border to keep the top corners concentric. Physical display size, camera, lighting, and angle affect scanning range. The QR card is also clickable.
+
+## Design provenance
+
+Canonical Bloxwap artwork, fonts, tokens, and chart math are bundled with source paths and hashes in `src/bloxwap/provenance.json`. Licenses and notices ship with the apps. Public builds do not need the sibling monorepo.
+
+The HIG informs readable numeric labels, persistent stale/offline states, chart text alternatives, keyboard focus, visible dialog dismissal, touch targets, and reduced motion. The renderer uses the current chart SDK directly.
