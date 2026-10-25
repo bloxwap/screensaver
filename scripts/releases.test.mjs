@@ -124,6 +124,23 @@ test('uploaded release verification detects missing, renamed, resized, and corru
   ]) { const uploaded = release(data); change(uploaded); assert.throws(() => verifyReleaseAssets(data, uploaded)); }
 });
 
+test('draft verification accepts GitHub provisional URLs only with exact repository, filename, and hash proof', () => {
+  const data = manifest();
+  const draft = release(data);
+  draft.draft = true;
+  for (const asset of draft.assets) asset.browser_download_url = asset.browser_download_url.replace(`/${data.tag}/`, '/untagged-39be751c1ea768624b57/');
+  assert.throws(() => verifyReleaseAssets(data, draft), /missing or mismatched/);
+  assert.equal(verifyReleaseAssets(data, draft, { allowDraft: true }), true);
+  // A published release can never retain provisional URLs, even if this option is passed.
+  assert.throws(() => verifyReleaseAssets(data, { ...draft, draft: false }, { allowDraft: true }), /missing or mismatched/);
+  for (const change of [
+    (item) => { item.assets[0].browser_download_url = item.assets[0].browser_download_url.replace('/bloxwap/screensaver/', '/another/repository/'); },
+    (item) => { item.assets[0].browser_download_url += '?unexpected=1'; },
+    (item) => { item.assets[0].browser_download_url = item.assets[0].browser_download_url.replace('untagged-39be751c1ea768624b57', 'some-other-tag'); },
+    (item) => { item.assets[0].digest = null; },
+  ]) { const invalid = structuredClone(draft); change(invalid); assert.throws(() => verifyReleaseAssets(data, invalid, { allowDraft: true })); }
+});
+
 test('publication retries resume only the same draft or an identical public release at the actual tag commit', () => {
   const data = manifest();
   const sourceSha = 'a'.repeat(40);

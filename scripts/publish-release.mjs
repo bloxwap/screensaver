@@ -50,6 +50,6 @@ for (const file of [resolve(values.metadata, 'release-manifest.json'), resolve(v
 // REST lookup by pending tag cannot find a draft. The CLI resolves its database id via GraphQL.
 const { databaseId } = JSON.parse(gh('release', 'view', manifest.tag, '--repo', REPOSITORY, '--json', 'databaseId'));
 const release = JSON.parse(gh('api', `repos/${REPOSITORY}/releases/${databaseId}`));
-verifyReleaseAssets(manifest, release);
+verifyReleaseAssets(manifest, release, { allowDraft: true });
 gh('release', 'edit', manifest.tag, '--repo', REPOSITORY, '--draft=false', manifest.channel === 'preview' ? '--latest=false' : '--latest');
 console.log(`Published ${manifest.releaseUrl}`);
