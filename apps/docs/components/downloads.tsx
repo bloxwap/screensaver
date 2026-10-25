@@ -47,7 +47,7 @@ function fileSize(bytes: number): string {
 }
 
 function architectureLabel(platform: string, architecture: string): string {
-  if (platform === 'macos') return architecture === 'arm64' ? 'Apple silicon' : 'Intel';
+  if (platform === 'macos') return architecture === 'arm64' ? 'Apple Silicon' : 'Intel';
   return architecture === 'arm64' ? 'ARM64' : '64-bit';
 }
 
@@ -74,21 +74,23 @@ function DownloadCell({ screenAsset, platform, manifest }: { screenAsset: Screen
 
   if (!primaryDownloads.some(Boolean)) return <div className="download-unavailable">
     <span>Coming soon</span>
-    <small>{platform.id === 'macos' ? 'Apple silicon & Intel' : '64-bit'}</small>
+    <small>{platform.id === 'macos' ? 'Apple Silicon & Intel' : '64-bit'}</small>
   </div>;
 
   return <div className="download-options">
-    {platform.architectures.map((arch, index) => {
-      const download = primaryDownloads[index];
-      const architecture = architectureLabel(platform.id, arch);
-      if (!download) return <span key={arch} className="download-architecture-unavailable">{architecture} coming soon</span>;
-      return <div key={arch} className="download-option">
-        <a className="download-link" href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architecture}), ${platform.id === 'macos' ? `${macPackageDescription(download)}, ` : ''}version ${manifest.version}, ${download.format}, ${fileSize(download.size)}`}>
-          <span>{platform.id === 'macos' ? architecture : 'Download'}</span><DownloadIcon />
-        </a>
-        <span className="download-file">{platform.id === 'macos' && `${macPackageLabel(download)} · `}{platform.id !== 'macos' && `${architecture} · `}{download.format === 'AppImage' ? 'AppImage' : download.format.toUpperCase()} · {fileSize(download.size)}</span>
-      </div>;
-    })}
+    <div className={`download-primary download-primary-${platform.id}`}>
+      {platform.architectures.map((arch, index) => {
+        const download = primaryDownloads[index];
+        const architecture = architectureLabel(platform.id, arch);
+        if (!download) return <span key={arch} className="download-architecture-unavailable">{architecture} coming soon</span>;
+        return <div key={arch} className="download-option">
+          <a className="download-link" href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architecture}), ${platform.id === 'macos' ? `${macPackageDescription(download)}, ` : ''}version ${manifest.version}, ${download.format}, ${fileSize(download.size)}`}>
+            <span>{platform.id === 'macos' ? architecture : 'Download'}</span><DownloadIcon />
+          </a>
+          <span className="download-file">{platform.id === 'macos' && `${macPackageLabel(download)} · `}{download.format === 'AppImage' ? 'AppImage' : download.format.toUpperCase()} · {fileSize(download.size)}</span>
+        </div>;
+      })}
+    </div>
     {otherDownloads.length > 0 && <details className="download-formats">
       <summary>Other formats</summary>
       <ul>{otherDownloads.map((download) => <li key={download.filename}>
