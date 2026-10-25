@@ -1,0 +1,55 @@
+---
+title: Installation
+description: Install, update, or remove an edition on Mac, Windows, or Linux.
+---
+
+Choose an asset and operating system on the [download page](/#downloads). Each edition opens its selected asset automatically and keeps its own preferences, so you can install more than one edition.
+
+## Mac
+
+Requires **macOS 13 Ventura or newer**. Choose **Apple silicon** for an M-series Mac or **Intel** for an Intel Mac. Find the processor in **Apple menu → About This Mac**.
+
+1. Download the edition's DMG.
+2. Open the DMG and move the app to **Applications**.
+3. Open the app from Applications.
+
+A ZIP is available as an alternative: extract it and move the app to Applications. The app runs independently of System Settings' built-in screensaver selection.
+
+Unsigned preview builds may be blocked by macOS. Check the release's signing status and source before opening a downloaded app. Use its [browser preview](/docs/preview) if you prefer to wait for a signed build. Stable Mac releases require signing, notarization, and verification.
+
+## Windows
+
+Download the **x64 installer**, open it, and follow its installation steps. Launch the edition from the Start menu or the shortcut created by the installer. Check the release notes for the Windows versions actually verified for that release.
+
+Preview installers are unsigned and Windows may show an unknown-publisher or reputation prompt. The download page identifies their status. Signed releases can still receive reputation prompts; the [browser preview](/docs/preview) is available without installation.
+
+Configure optional idle activation in the app's Settings. The app does not install a `.scr` entry into Windows' Screen Saver Settings.
+
+## Linux
+
+Choose the **x64 AppImage** for a portable app or **DEB** for a compatible Debian-based distribution. Check the release notes for tested distributions and desktop sessions.
+
+For an AppImage, allow the downloaded file to run as a program in your file manager, then open it. From a terminal, replace the example filename with your download:
+
+```sh
+chmod +x ./bloxwap-screensaver.AppImage
+./bloxwap-screensaver.AppImage
+```
+
+Open a DEB with your distribution's package installer, then launch the installed app. AppImage runtime dependencies and tray support vary. If an AppImage reports a missing FUSE library, follow your distribution's AppImage instructions or use the DEB where supported.
+
+Idle detection depends on the desktop session. Some Wayland compositors do not expose system idle time, so automatic activation may be unavailable even when manual preview works.
+
+## Updates and checksums
+
+Quit the edition from its tray/menu-bar menu before installing a newer version of the same edition. Download updates from the website or [GitHub Releases](https://github.com/bloxwap/screensaver/releases). Check the version, processor architecture, and release channel before replacing the app.
+
+Each release includes `SHA256SUMS` and `release-manifest.json`. The website's download metadata comes from that manifest. The app does not automatically install updates.
+
+## Uninstall
+
+Quit the app first. On Mac, remove it from Applications. On Windows, use **Settings → Apps**. On Linux, delete a portable AppImage or remove the installed DEB using your package manager. Stored preferences may remain after removing the app.
+
+## Phones and tablets
+
+Use a [browser preview](/docs/preview). Supported browsers can add it to the Home Screen. Mobile launches manually and does not replace the device's lock screen or system screensaver.

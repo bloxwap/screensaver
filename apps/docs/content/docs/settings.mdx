@@ -1,0 +1,31 @@
+---
+title: Desktop settings
+description: Configure optional idle activation, the tray menu, and connected displays.
+---
+
+Open **Settings** in an installed edition. Each asset edition keeps its own preferences.
+
+## Automatic activation
+
+Turn on **Start when my computer is idle**, then choose a wait time from 1–30 minutes. It starts disabled.
+
+The app must be running. With idle activation enabled, closing its main window leaves it in the menu bar or system tray. Startup at login is not enabled automatically.
+
+The idle display opens on connected displays. Move the pointer or press a key to dismiss it and return to your desktop. Sleep, suspension, and secure-lock settings still apply.
+
+The app is a standalone desktop display. It does not replace the secure lock screen or install a native macOS `.saver` or Windows `.scr` module.
+
+## Tray and menu-bar controls
+
+- **Open** returns to the main display and its settings.
+- **Preview screensaver** starts the fullscreen desktop preview.
+- The idle-activation checkbox enables or disables automatic activation.
+- **Quit** closes the app and stops automatic activation.
+
+If no system tray is available, automatic activation stays unavailable. On Linux, the session must also expose idle state; some Wayland compositors do not.
+
+## Multiple editions
+
+Bitcoin, Solana, Ethereum, and Hyperliquid install separately. Enable automatic activation only for the edition you want when idle, so several editions do not open over one another.
+
+Use [browser previews](/docs/preview) to compare editions without changing desktop settings.

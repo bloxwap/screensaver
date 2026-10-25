@@ -1,0 +1,88 @@
+{
+  "repository": "bloxwap/monorepo",
+  "commit": "652a3618252e96a954f7e93d8f59af6c0f26ac7b",
+  "fontVersion": "0.1.2",
+  "files": [
+    {
+      "source": "packages/markets/svg/BTC.svg",
+      "destination": "public/brand/BTC.svg",
+      "sourceSha256": "f1d105d8bfe4692dc47e9236bbb4039693c942613729bb82a227daa0020b4c35",
+      "sha256": "f1d105d8bfe4692dc47e9236bbb4039693c942613729bb82a227daa0020b4c35"
+    },
+    {
+      "source": "packages/tokens/src/brand.ts",
+      "destination": "src/bloxwap/brand.ts",
+      "sourceSha256": "48b15b3726fa2580aa290f0389cdf5daa029b9164beb947c4e85a127e0e8b84a",
+      "sha256": "48b15b3726fa2580aa290f0389cdf5daa029b9164beb947c4e85a127e0e8b84a"
+    },
+    {
+      "source": "packages/trading-core/src/chart-math.ts",
+      "destination": "src/bloxwap/chart-math.ts",
+      "sourceSha256": "34226a1f68b7e6e85fbbae5b457942566770f828415313541dc0cd2fc558396a",
+      "sha256": "34226a1f68b7e6e85fbbae5b457942566770f828415313541dc0cd2fc558396a"
+    },
+    {
+      "source": "packages/ui/src/components/brand-wordmark.tsx",
+      "destination": "src/bloxwap/BrandWordmark.tsx",
+      "sourceSha256": "af7d48cc59610c7affc92aa7ee0b0bef557ae8245f91354dd3ae204a75c9a5a1",
+      "sha256": "4db5e5c42185d3f2ca1f8cbd9be9284f7a9731cace75879340feb035670b40c2"
+    },
+    {
+      "source": "packages/ui/src/styles/tokens.generated.css",
+      "destination": "src/bloxwap/tokens.css",
+      "sourceSha256": "6569917c639b8f577624dc89bb298de50447e24296ad0bfa523db6868d1a7d0a",
+      "sha256": "937292e0196b3fe54635dcb5d7bfd41edc9e2c1880af8c1d66596d359857606f"
+    },
+    {
+      "source": "node_modules/@bloxwap/font/fonts/BloxwapSans/BloxwapSans-Variable.woff2",
+      "destination": "public/brand/BloxwapSans-Variable.woff2",
+      "sourceSha256": "96f6be58023b1d22152c797336282a4330a47ab4a3c0ab87451be887903746b7",
+      "sha256": "96f6be58023b1d22152c797336282a4330a47ab4a3c0ab87451be887903746b7"
+    },
+    {
+      "source": "node_modules/@bloxwap/font/fonts/BloxwapMono/BloxwapMono-Variable.woff2",
+      "destination": "public/brand/BloxwapMono-Variable.woff2",
+      "sourceSha256": "fa66e41575807c3d260d8f5b493be349cac127836b0174976c7d4876237d2632",
+      "sha256": "fa66e41575807c3d260d8f5b493be349cac127836b0174976c7d4876237d2632"
+    },
+    {
+      "source": "packages/tokens/assets/fonts/Bloxwap-OFL.txt",
+      "destination": "public/brand/Bloxwap-OFL.txt",
+      "sourceSha256": "9c4b224dbad41d9cf7f0a65ddf83c04e1b3a838e073ee25280c6a838f2577804",
+      "sha256": "9c4b224dbad41d9cf7f0a65ddf83c04e1b3a838e073ee25280c6a838f2577804"
+    },
+    {
+      "source": "apps/app/public/fonts/SpaceGrotesk-Bold.ttf",
+      "destination": "public/brand/SpaceGrotesk-Bold.ttf",
+      "sourceSha256": "7209bbb75fc0f5c546a5f5773b0db74ffc6abf04c2148c1105cace5765a96bdb",
+      "sha256": "7209bbb75fc0f5c546a5f5773b0db74ffc6abf04c2148c1105cace5765a96bdb"
+    },
+    {
+      "source": "apps/app/public/fonts/OFL.txt",
+      "destination": "public/brand/SpaceGrotesk-OFL.txt",
+      "sourceSha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72",
+      "sha256": "18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943"
+    },
+    {
+      "source": "packages/markets/svg/SOL.svg",
+      "destination": "public/brand/SOL.svg",
+      "sourceCommit": "fb626f7cd1e04a6fd7543bb9f0c43277059dcda9",
+      "sourceSha256": "a34f98bc24dbe214c5bbeb760e4eaf927dae5c4ab365658d0c7a5ef5ae5b0197",
+      "sha256": "a34f98bc24dbe214c5bbeb760e4eaf927dae5c4ab365658d0c7a5ef5ae5b0197"
+    },
+    {
+      "source": "packages/markets/svg/ETH.svg",
+      "destination": "public/brand/ETH.svg",
+      "sourceCommit": "fb626f7cd1e04a6fd7543bb9f0c43277059dcda9",
+      "sourceSha256": "e90664708ed75ac163229a56f17dc6b44e91f078f14fd40f21c5659dff1a8dd9",
+      "sha256": "e90664708ed75ac163229a56f17dc6b44e91f078f14fd40f21c5659dff1a8dd9"
+    },
+    {
+      "source": "packages/markets/svg/HYPE.svg",
+      "destination": "public/brand/HYPE.svg",
+      "sourceCommit": "fb626f7cd1e04a6fd7543bb9f0c43277059dcda9",
+      "sourceSha256": "0bed6f24e6c45a5462aa3b28cc698dec33128f986df3d3ad02bf742f9bb0df76",
+      "sha256": "0bed6f24e6c45a5462aa3b28cc698dec33128f986df3d3ad02bf742f9bb0df76"
+    }
+  ]
+}

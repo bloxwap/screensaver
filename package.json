@@ -1,0 +1,56 @@
+{
+  "name": "@bloxwap/screensaver",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live Bitcoin, Solana, Ethereum, and Hyperliquid screensavers for Mac, Windows, Linux, and the web.",
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "author": "Bloxwap",
+  "repository": "https://github.com/bloxwap/screensaver",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --open",
+    "build": "node scripts/third-party-notices.mjs && tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "tsx --test src/market/*.test.ts src/components/*.test.ts desktop/*.test.cjs scripts/*.test.mjs",
+    "test:browser": "playwright test",
+    "desktop": "npm run build && install-electron && electron .",
+    "desktop:pack": "node scripts/desktop-build.mjs --dir",
+    "desktop:dist": "node scripts/desktop-build.mjs",
+    "sync:bloxwap": "node scripts/sync-bloxwap-assets.mjs && node scripts/generate-icons.mjs",
+    "test:site": "playwright test -c playwright.site.config.ts",
+    "docs:dev": "npm run docs:build && npm run docs:preview",
+    "docs:build": "node scripts/build-site.mjs",
+    "docs:check": "npm --workspace @bloxwap/screensaver-docs run check",
+    "docs:preview": "node scripts/serve-site.mjs",
+    "check:site": "node scripts/check-site.mjs",
+    "release:manifest": "node scripts/release-manifest.mjs",
+    "release:fetch": "node scripts/fetch-release.mjs",
+    "docs:check-export": "node scripts/check-site.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@bloxwap/chart": "0.4.0",
+    "@bloxwap/hyperliquid": "0.7.0",
+    "@number-flow/react": "0.6.2",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "qrcode.react": "4.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vite-plugin-pwa": "2.0.0"
+  },
+  "workspaces": [
+    "apps/docs"
+  ]
+}

@@ -1,0 +1,70 @@
+---
+title: Development
+description: Run the renderer, website, and desktop editions from one checkout.
+---
+
+Use Node.js 24 or newer and npm. The root lockfile installs the renderer and private documentation workspace.
+
+```sh
+npm ci
+npm run dev
+```
+
+The renderer opens at `http://127.0.0.1:5173`. Add `?asset=BTC`, `?asset=SOL`, `?asset=ETH`, or `?asset=HYPE` to choose a market. Missing or unsupported symbols use the Bitcoin default.
+
+## Website and documentation
+
+```sh
+npm run docs:dev
+```
+
+Open `http://127.0.0.1:3907/screensaver/`. This builds and serves the complete static website, including live previews; rerun the build to incorporate source changes. Individual steps are:
+
+```sh
+npm run docs:check
+npm run docs:build
+npm run docs:preview
+```
+
+The build combines the Next.js/Fumadocs export with the Vite renderer at `/screensaver/preview/`, using the same base path as GitHub Pages.
+
+The homepage reads `config/assets.json` and `config/releases.json` at build time. No market stream opens on the download page. An empty release manifest keeps downloads disabled.
+
+## Checks
+
+```sh
+npm run build
+npm test
+npx playwright install chromium webkit
+npm run test:browser
+npm run docs:build
+npm run test:site
+```
+
+Browser checks use the real renderer and SDK with controlled transport responses. Live-data and native installer checks provide separate evidence for the public service and operating systems.
+
+`npm run preview` serves the renderer production build on port 5173. Bun can invoke the same scripts after npm installs dependencies.
+
+## Desktop builds
+
+```sh
+npm run desktop
+npm run desktop:pack -- --asset BTC
+npm run desktop:dist -- --asset SOL --arch arm64
+```
+
+Build on the target OS. `--asset` accepts BTC, SOL, ETH, or HYPE. Mac supports `arm64` and `x64`; Windows and Linux target `x64`. The example builds Solana for Apple silicon when run on a Mac.
+
+Output and staging directories are isolated by edition, OS, and architecture. Packaged apps contain edition metadata, the bundled renderer, the Electron host, and notices. Docs tooling stays outside desktop packages.
+
+## Shared design assets
+
+Canonical icons, brand geometry, fonts, tokens, and chart math are bundled with provenance hashes. A public build needs no private sibling checkout.
+
+Maintainers with the sibling monorepo can refresh the snapshot:
+
+```sh
+npm run sync:bloxwap
+```
+
+Keep source hashes and licenses with the assets. See [data and display](/docs/data-and-display) and [releasing](/docs/releasing) for the rendering contract and release automation.

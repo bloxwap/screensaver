@@ -1,0 +1,42 @@
+---
+title: Troubleshooting
+description: Resolve download, price, fullscreen, and desktop activation issues.
+---
+
+## A download is unavailable
+
+Downloads are enabled only when a verified release manifest lists a real artifact. Check [GitHub Releases](https://github.com/bloxwap/screensaver/releases) or try a [browser preview](/docs/preview) while a build is unavailable.
+
+Choose the architecture that matches your computer. Mac offers Apple silicon and Intel; initial Windows and Linux builds target x64.
+
+## The operating system blocks the app
+
+Check whether the page labels the download as an unsigned preview. Preview builds may receive publisher or security prompts. See [installation](/docs/installation) for platform options and use the browser preview if you prefer to wait for a signed release.
+
+## No price, or a delayed/offline price
+
+Check your internet connection and device clock. The display needs HTTPS and WebSocket access to `api.hyperliquid.xyz`. Network filtering, a sleeping device, or a market-data interruption can delay updates.
+
+The app reconnects automatically. It retains the last observation with an explicit status. A cold offline launch waits for a live connection before displaying a price.
+
+If **History unavailable** appears, live observations can still arrive and build a new trail. Reload after restoring your connection if the issue persists.
+
+## Fullscreen or Keep awake is unavailable
+
+Browser support and device policy determine which controls work. Request fullscreen with its button; the site does not enter fullscreen automatically. A mobile home-screen installation can provide a more immersive display.
+
+Keep awake is opt-in and can be refused by system power settings. It does not override your computer's secure-lock policy.
+
+## Automatic activation does not start
+
+Check that the desktop edition is running, **Start when my computer is idle** is enabled, and its wait time has elapsed. A system tray/menu bar is required. Locking or suspending the computer prevents the idle display from opening.
+
+On Linux, try the tray's manual preview. If that works while idle activation does not, the session may not expose idle state. This can happen under Wayland.
+
+## The QR is difficult to scan
+
+Try a larger display or move closer. Camera focus, viewing angle, brightness, and physical display size affect scanning range. The QR card is also a clickable link.
+
+## Report a problem
+
+[Open an issue](https://github.com/bloxwap/screensaver/issues/new) with the edition, release version, operating system and architecture, browser if relevant, and steps to reproduce. Include the connection status and error text; exclude credentials or private account information.
