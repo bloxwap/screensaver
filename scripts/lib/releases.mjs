@@ -116,13 +116,21 @@ export function checksumText(manifest) {
 }
 
 /** Cross-check the manifest against actual uploaded GitHub assets, never inferred URL templates alone. */
-export function verifyReleaseAssets(manifest, release) {
+export function verifyReleaseAssets(manifest, release, { allowDraft = false } = {}) {
   validateManifest(manifest);
   if (release.tag_name !== manifest.tag || Boolean(release.prerelease) !== (manifest.channel === 'preview')) throw new Error('Release channel/tag does not match manifest');
   const assets = new Map(release.assets.map((asset) => [asset.name, asset]));
   for (const entry of manifest.downloads) {
     const asset = assets.get(entry.filename);
-    if (!asset || asset.size !== entry.size || asset.browser_download_url !== entry.url || asset.state !== 'uploaded') throw new Error(`Release asset missing or mismatched: ${entry.filename}`);
+    // GitHub uses an untagged provisional URL until a newly created draft is published.
+    // Permit only that exact repository/file form during explicit draft verification.
+    const draftPrefix = `https://github.com/${REPOSITORY}/releases/download/`;
+    const draftPath = asset?.browser_download_url?.startsWith(draftPrefix) ? asset.browser_download_url.slice(draftPrefix.length) : '';
+    const provisionalTag = draftPath.split('/')[0];
+    const draftUrlMatches = allowDraft && release.draft === true && /^untagged-[a-f0-9]+$/.test(provisionalTag)
+      && draftPath === `${provisionalTag}/${encodeURIComponent(entry.filename)}`;
+    if (!asset || asset.size !== entry.size || (asset.browser_download_url !== entry.url && !draftUrlMatches) || asset.state !== 'uploaded') throw new Error(`Release asset missing or mismatched: ${entry.filename}`);
+    if (draftUrlMatches && asset.digest !== `sha256:${entry.sha256}`) throw new Error(`Draft artifact checksum missing or mismatched: ${entry.filename}`);
     if (asset.digest && asset.digest !== `sha256:${entry.sha256}`) throw new Error(`Uploaded artifact checksum mismatch: ${entry.filename}`);
   }
   return true;
