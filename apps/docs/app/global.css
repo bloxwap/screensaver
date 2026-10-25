@@ -29,7 +29,7 @@
   --font-sans: var(--font-bloxwap-sans), ui-rounded, system-ui, sans-serif;
   --font-mono: var(--font-bloxwap-mono), ui-monospace, monospace;
   --hig-control: 2.75rem;
-  --docs-transition: 120ms ease-out;
+  --docs-transition: var(--hig-motion-duration-fast) var(--hig-motion-easing-standard);
 }
 
 @theme inline {
@@ -52,14 +52,15 @@ pre, code, kbd { font-family: var(--font-mono); }
 
 .hig-button {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--hig-space-sm);
-  min-height: var(--hig-control); padding: var(--hig-space-sm) var(--hig-space-xl);
+  min-height: var(--hig-control); max-width: 100%; padding: var(--hig-space-sm) var(--hig-space-xl);
   border: 1px solid transparent; border-radius: var(--hig-radius-pill);
   background: var(--hig-nested); color: var(--hig-text);
-  font: 600 .875rem / 1.4 var(--font-sans); text-decoration: none; touch-action: manipulation;
-  transition: background-color var(--docs-transition), color var(--docs-transition), filter var(--docs-transition);
+  font: var(--hig-type-label); text-decoration: none; touch-action: manipulation; overflow-wrap: anywhere;
+  transition: background-color var(--docs-transition), color var(--docs-transition), filter var(--docs-transition), transform var(--docs-transition);
 }
 .hig-button[data-intent='primary'] { background: var(--hig-action); color: var(--hig-onAction); }
-.hig-button:hover { filter: brightness(1.12); }
+.hig-button:hover { filter: brightness(.9); }
+.hig-button:active { transform: scale(.98); }
 .hig-button svg { flex: none; }
 .text-link { color: var(--hig-text); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: .2em; }
 .text-link:hover { color: var(--hig-action); }
@@ -121,5 +122,6 @@ button[data-search-full] kbd { display: inline-grid; place-items: center; min-wi
 }
 @media (max-width: 480px) { .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) {
+  .hig-button:active { transform: none; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
 }

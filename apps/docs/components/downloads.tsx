@@ -84,7 +84,7 @@ function DownloadCell({ screenAsset, platform, manifest }: { screenAsset: Screen
         const architecture = architectureLabel(platform.id, arch);
         if (!download) return <span key={arch} className="download-architecture-unavailable">{architecture} coming soon</span>;
         return <div key={arch} className="download-option">
-          <a className="download-link" href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architecture}), ${platform.id === 'macos' ? `${macPackageDescription(download)}, ` : ''}version ${manifest.version}, ${download.format}, ${fileSize(download.size)}`}>
+          <a className="hig-button download-link" data-intent="secondary" href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architecture}), ${platform.id === 'macos' ? `${macPackageDescription(download)}, ` : ''}version ${manifest.version}, ${download.format}, ${fileSize(download.size)}`}>
             <span>{platform.id === 'macos' ? architecture : 'Download'}</span><DownloadIcon />
           </a>
           <span className="download-file">{platform.id === 'macos' && `${macPackageLabel(download)} · `}{download.format === 'AppImage' ? 'AppImage' : download.format.toUpperCase()} · {fileSize(download.size)}</span>
@@ -127,13 +127,15 @@ export function Downloads({ assets, manifest }: { assets: readonly ScreenAsset[]
         <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Asset</th>{platforms.map((platform) => <th scope="col" role="columnheader" key={platform.id}>{platform.label}</th>)}<th scope="col" role="columnheader">Try it first</th></tr></thead>
         <tbody role="rowgroup">{assets.map((screenAsset) => <tr role="row" key={screenAsset.symbol} id={screenAsset.slug} data-asset={screenAsset.symbol}>
           <th scope="row" role="rowheader" className="download-asset">
-            {/* The canonical asset artwork is copied into the static site during assembly. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={assetUrl(`/${screenAsset.icon}`)} width="40" height="40" alt="" />
-            <span><strong>{screenAsset.name}</strong><small>{screenAsset.symbol}</small></span>
+            <div className="download-asset-identity">
+              {/* The canonical asset artwork is copied into the static site during assembly. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={assetUrl(`/${screenAsset.icon}`)} width="40" height="40" alt="" />
+              <span><strong>{screenAsset.name}</strong><small>{screenAsset.symbol}</small></span>
+            </div>
           </th>
           {platforms.map((platform) => <td role="cell" key={platform.id} data-label={platform.label}><DownloadCell screenAsset={screenAsset} platform={platform} manifest={manifest} /></td>)}
-          <td role="cell" data-label="Try it first" className="preview-cell"><a className="preview-link" href={assetUrl(`/preview/?asset=${encodeURIComponent(screenAsset.symbol)}`)} aria-label={`Preview ${screenAsset.name} screensaver`}><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m5 3 7 5-7 5V3Z" fill="currentColor" /></svg>Preview<span aria-hidden="true">↗</span></a><span className="preview-caption">Live in your browser</span></td>
+          <td role="cell" data-label="Try it first" className="preview-cell"><a className="hig-button preview-link" data-intent="primary" href={assetUrl(`/preview/?asset=${encodeURIComponent(screenAsset.symbol)}`)} aria-label={`Preview ${screenAsset.name} screensaver`}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m5 3 7 5-7 5V3Z" fill="currentColor" /></svg>Preview</a><span className="preview-caption">Live in your browser</span></td>
         </tr>)}</tbody>
       </table>
     </div>
