@@ -121,7 +121,7 @@ test('staging refuses a missing renderer instead of packaging an empty app', asy
   await assert.rejects(stageDesktop({ projectRoot, asset: 'ETH', platform: 'linux', arch: 'x64' }), /Missing dist\/index.html/);
 });
 
-test('post-pack verification inspects real archive contents and rejects wrong editions or missing renderer files', async (t) => {
+test('post-pack verification accepts Windows/POSIX archive listings and rejects wrong editions or missing renderer files', async (t) => {
   const projectRoot = await fixture(t);
   await mkdir(path.join(projectRoot, 'dist/brand'), { recursive: true });
   await mkdir(path.join(projectRoot, 'dist/assets'), { recursive: true });
@@ -132,6 +132,15 @@ test('post-pack verification inspects real archive contents and rejects wrong ed
   const archive = path.join(projectRoot, 'app.asar');
   await asar.createPackage(options.stageDirectory, archive);
   assert.equal(verifyDesktopArchive(archive, options).asset, 'ETH');
+
+  // Exercise both ASAR host formats on every runner, so macOS/Linux tests also
+  // catch Windows-only separator regressions while still reading a real archive.
+  const listPackage = asar.listPackage.bind(asar);
+  for (const separator of ['/', '\\']) {
+    t.mock.method(asar, 'listPackage', (...args) => listPackage(...args).map((file) => file.replaceAll('\\', '/').replaceAll('/', separator)));
+    assert.equal(verifyDesktopArchive(archive, options).asset, 'ETH');
+    t.mock.restoreAll();
+  }
 
   const editionFile = path.join(options.stageDirectory, 'desktop/edition.json');
   const original = await readFile(editionFile);

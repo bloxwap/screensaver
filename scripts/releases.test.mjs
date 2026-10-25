@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CATALOG, EMPTY_MANIFEST, checksumText, createManifest, expectedDownloads, releaseAssetUrl, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
+import { CATALOG, EMPTY_MANIFEST, checksumText, createManifest, expectedDownloads, releaseAssetUrl, releaseResumeState, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
 import { fetchCurrentRelease, fetchReleaseManifest } from './fetch-release.mjs';
 
 const version = '0.1.0';
@@ -122,6 +122,25 @@ test('uploaded release verification detects missing, renamed, resized, and corru
     (item) => { item.assets[0].browser_download_url = 'https://example.org/fake'; },
     (item) => { item.prerelease = false; },
   ]) { const uploaded = release(data); change(uploaded); assert.throws(() => verifyReleaseAssets(data, uploaded)); }
+});
+
+test('publication retries resume only the same draft or an identical public release at the actual tag commit', () => {
+  const data = manifest();
+  const sourceSha = 'a'.repeat(40);
+  const tagCommitSha = sourceSha;
+  assert.equal(releaseResumeState(data, null, { sourceSha }), 'create');
+  const draft = { ...release(data), draft: true, target_commitish: sourceSha };
+  assert.equal(releaseResumeState(data, draft, { sourceSha }), 'resume-draft');
+  assert.throws(() => releaseResumeState(data, { ...draft, target_commitish: 'b'.repeat(40) }, { sourceSha }), /different source commit/);
+  const published = { ...release(data), target_commitish: 'main' };
+  assert.equal(releaseResumeState(data, published, { sourceSha, tagCommitSha }), 'verified-public');
+  assert.throws(() => releaseResumeState(data, published, { sourceSha, tagCommitSha: 'b'.repeat(40) }), /different source commit/);
+  assert.throws(() => releaseResumeState(data, { ...published, prerelease: false }, { sourceSha, tagCommitSha }), /different tag or channel/);
+  for (const digest of [null, `sha256:${'b'.repeat(64)}`]) {
+    const changed = structuredClone(published);
+    changed.assets[0].digest = digest;
+    assert.throws(() => releaseResumeState(data, changed, { sourceSha, tagCommitSha }), /unchanged|checksum mismatch/);
+  }
 });
 
 test('site refresh prefers stable over newer preview, and accepts preview before first stable release', async () => {

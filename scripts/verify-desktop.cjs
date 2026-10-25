@@ -8,7 +8,9 @@ const asar = requireFromBuilder('@electron/asar');
 
 function verifyDesktopArchive(archive, expected) {
   asar.uncache(archive);
-  const files = new Set(asar.listPackage(archive).map((file) => file.replace(/^\//, '')));
+  // ASAR's listing uses the host path separator, including a leading backslash
+  // on Windows. Compare archive entries using one POSIX-style representation.
+  const files = new Set(asar.listPackage(archive).map((file) => file.replaceAll('\\', '/').replace(/^\/+/, '')));
   const required = [
     'package.json', 'desktop/edition.json', 'desktop/main.cjs', 'desktop/preload.cjs',
     'desktop/edition.cjs', 'desktop/idle.cjs', 'dist/index.html', 'dist/third-party-notices.txt',

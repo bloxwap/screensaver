@@ -127,3 +127,23 @@ export function verifyReleaseAssets(manifest, release) {
   }
   return true;
 }
+
+/** Decide whether a retry can safely continue without replacing public binaries. */
+export function releaseResumeState(manifest, release, { sourceSha, tagCommitSha = null } = {}) {
+  validateManifest(manifest);
+  if (!/^[a-f0-9]{40}$/.test(sourceSha ?? '')) throw new Error('Release recovery requires a full source commit SHA');
+  if (!release) return 'create';
+  if (release.tag_name !== manifest.tag || Boolean(release.prerelease) !== (manifest.channel === 'preview')) throw new Error('Existing release has a different tag or channel');
+  if (release.draft) {
+    if (release.target_commitish !== sourceSha && tagCommitSha !== sourceSha) throw new Error('Existing draft targets a different source commit');
+    return 'resume-draft';
+  }
+  // target_commitish may be a moving branch name; resolve the actual tag commit.
+  if (tagCommitSha !== sourceSha) throw new Error('Published release tag points to a different source commit');
+  verifyReleaseAssets(manifest, release);
+  for (const entry of manifest.downloads) {
+    const uploaded = release.assets.find((asset) => asset.name === entry.filename);
+    if (uploaded.digest !== `sha256:${entry.sha256}`) throw new Error(`Cannot prove the published artifact is unchanged: ${entry.filename}`);
+  }
+  return 'verified-public';
+}
