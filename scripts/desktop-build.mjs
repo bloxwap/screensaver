@@ -12,7 +12,8 @@ export async function buildDesktop(args = process.argv.slice(2)) {
   }
   const options = desktopOptions(input);
   if (input.dryRun) {
-    console.log(JSON.stringify({ asset: options.asset.symbol, platform: options.platform, arch: options.arch, appId: options.appId, productName: options.productName, channel: options.channel, stageDirectory: options.stageDirectory, outputDirectory: options.outputDirectory, artifacts: artifactNames(options) }, null, 2));
+    const native = options.platform === 'macos' ? (await import('./macos-build.mjs')).macOSBuildPlan(options) : null;
+    console.log(JSON.stringify({ asset: options.asset.symbol, platform: options.platform, arch: options.arch, appId: options.appId, productName: options.productName, channel: options.channel, stageDirectory: native?.workDirectory ?? options.stageDirectory, outputDirectory: options.outputDirectory, artifacts: artifactNames(options), ...(native ? { kind: 'screensaver', bundle: native.bundle, principalClass: native.principalClass, minimumSystemVersion: '13.0' } : { kind: 'application' }) }, null, 2));
     return;
   }
   if (options.platform !== nativePlatform()) {
@@ -34,11 +35,16 @@ export async function buildDesktop(args = process.argv.slice(2)) {
     if (build.error) throw build.error;
     if (build.status !== 0) throw new Error(`Renderer build failed with exit code ${build.status ?? 'unknown'}.`);
   }
+  if (options.platform === 'macos') {
+    const { buildMacOS } = await import('./macos-build.mjs');
+    await buildMacOS({ ...options, dir: input.dir });
+    return;
+  }
   await stageDesktop(options);
   // Pass an explicit target and architecture: runner defaults must never silently
   // relabel a different architecture as the artifact requested by the release job.
   const { Arch, Platform, build } = await import('electron-builder');
-  const platform = { macos: Platform.MAC, windows: Platform.WINDOWS, linux: Platform.LINUX }[options.platform];
+  const platform = { windows: Platform.WINDOWS, linux: Platform.LINUX }[options.platform];
   await build({ projectDir: options.projectRoot, config: desktopConfig(options), targets: platform.createTarget(input.dir ? 'dir' : null, Arch[options.arch]), publish: 'never' });
   console.log(`Built ${options.productName} for ${options.platform}/${options.arch}: ${options.outputDirectory}`);
 }

@@ -21,12 +21,17 @@ test('every supported edition/architecture has a unique artifact, application id
     for (const [platform, architectures] of Object.entries(SUPPORTED_ARCHITECTURES)) {
       for (const arch of architectures) {
         const options = desktopOptions({ asset: asset.symbol, platform, arch }, {});
-        const config = desktopConfig(options, {});
-        assert.equal(config.extraMetadata.screensaverAsset, asset.symbol);
-        assert.equal(config.appId, `com.bloxwap.screensaver.${asset.slug}`);
-        assert.equal(config.productName, `Bloxwap ${asset.name} Screensaver`);
-        assert.equal(config.directories.app, options.stageDirectory);
-        assert.ok(config.files.includes('desktop/edition.json'));
+        if (platform === 'macos') {
+          assert.throws(() => desktopConfig(options, {}), /native \.saver bundle/);
+        } else {
+          const config = desktopConfig(options, {});
+          assert.equal(config.extraMetadata.screensaverAsset, asset.symbol);
+          assert.equal(config.appId, `com.bloxwap.screensaver.${asset.slug}`);
+          assert.equal(config.productName, `Bloxwap ${asset.name} Screensaver`);
+          assert.equal(config.directories.app, options.stageDirectory);
+          assert.ok(config.files.includes('desktop/edition.json'));
+          assert.equal(config.mac, undefined);
+        }
         assert.ok(!stages.has(options.stageDirectory));
         stages.add(options.stageDirectory);
         appIds.add(options.appId);
@@ -55,18 +60,11 @@ test('unsupported targets and malformed options fail instead of silently buildin
   assert.deepEqual(parseDesktopArgs(['--asset=SOL', '--arch', 'x64', '--dir', '--skip-build']), { asset: 'SOL', arch: 'x64', dir: true, skipBuild: true });
 });
 
-test('preview and stable configuration have explicit signing/notarization policies', () => {
-  const input = { asset: 'BTC', platform: 'macos', arch: 'arm64' };
+test('Windows preview and stable configuration have explicit signing policies', () => {
+  const input = { asset: 'BTC', platform: 'windows', arch: 'x64' };
   const preview = desktopConfig({ ...input, channel: 'preview' }, {});
-  assert.equal(preview.mac.identity, '-');
-  assert.equal(preview.mac.hardenedRuntime, false);
-  assert.equal(preview.mac.notarize, false);
-  assert.equal(preview.mac.forceCodeSigning, false);
   assert.equal(preview.win.forceCodeSigning, false);
   const stable = desktopConfig({ ...input, channel: 'stable' }, {});
-  assert.equal(stable.mac.forceCodeSigning, true);
-  assert.equal(stable.mac.notarize, true);
-  assert.equal(stable.mac.hardenedRuntime, true);
   assert.equal(stable.win.forceCodeSigning, true);
   assert.deepEqual(stable.win.signtoolOptions.signingHashAlgorithms, ['sha256']);
 });
@@ -89,7 +87,7 @@ async function fixture(t) {
 
 test('staging writes immutable edition metadata without dependencies/docs and does not erase another edition', async (t) => {
   const projectRoot = await fixture(t);
-  const bitcoin = await stageDesktop({ projectRoot, asset: 'BTC', platform: 'macos', arch: 'arm64' });
+  const bitcoin = await stageDesktop({ projectRoot, asset: 'BTC', platform: 'linux', arch: 'x64' });
   const solana = await stageDesktop({ projectRoot, asset: 'SOL', platform: 'windows', arch: 'x64' });
   const [btc, sol] = await Promise.all([bitcoin, solana].map(async (options) => ({
     edition: JSON.parse(await readFile(path.join(options.stageDirectory, 'desktop/edition.json'), 'utf8')),
@@ -110,13 +108,14 @@ test('staging writes immutable edition metadata without dependencies/docs and do
   }
   // Rebuilding one edition must remove its stale staged files while preserving the other.
   await writeFile(path.join(bitcoin.stageDirectory, 'stale-file'), 'old');
-  await stageDesktop({ projectRoot, asset: 'BTC', platform: 'macos', arch: 'arm64' });
+  await stageDesktop({ projectRoot, asset: 'BTC', platform: 'linux', arch: 'x64' });
   assert.ok(!(await readdir(bitcoin.stageDirectory)).includes('stale-file'));
   assert.equal(JSON.parse(await readFile(path.join(solana.stageDirectory, 'desktop/edition.json'), 'utf8')).symbol, 'SOL');
 });
 
 test('staging refuses a missing renderer instead of packaging an empty app', async (t) => {
   const projectRoot = await fixture(t);
+  await assert.rejects(stageDesktop({ projectRoot, asset: 'BTC', platform: 'macos', arch: 'arm64' }), /native \.saver bundle/);
   await rm(path.join(projectRoot, 'dist/index.html'));
   await assert.rejects(stageDesktop({ projectRoot, asset: 'ETH', platform: 'linux', arch: 'x64' }), /Missing dist\/index.html/);
 });

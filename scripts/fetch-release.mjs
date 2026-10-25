@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { checksumText, EMPTY_MANIFEST, REPOSITORY, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
+import { checksumText, EMPTY_MANIFEST, normalizeManifest, REPOSITORY, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
 
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 
@@ -28,7 +28,7 @@ export async function fetchReleaseManifest(release, { fetchImpl = fetch } = {}) 
   verifyReleaseAssets(manifest, release);
   const checksums = await (await response(checksumsAsset.browser_download_url, { fetchImpl })).text();
   if (checksums.replaceAll('\r\n', '\n') !== checksumText(manifest)) throw new Error('Published checksums do not match the release manifest');
-  return manifest;
+  return normalizeManifest(manifest);
 }
 
 export async function fetchCurrentRelease({ tag, fetchImpl = fetch, log = console.warn } = {}) {

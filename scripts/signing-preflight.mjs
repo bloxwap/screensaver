@@ -22,7 +22,7 @@ export function signingPreflight({ platform = process.platform, channel = proces
   };
   if (platform === 'macos') {
     requireAll(['CSC_LINK', 'CSC_KEY_PASSWORD']);
-    // Match electron-builder 26's precedence: Apple ID, API key, then keychain.
+    // The native Mac signer uses Apple ID, API key, then an existing profile.
     if (present(env, 'APPLE_ID') || present(env, 'APPLE_APP_SPECIFIC_PASSWORD')) {
       requireAll(['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']);
     } else if (['APPLE_API_KEY', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER'].some((name) => present(env, name))) {
@@ -30,7 +30,6 @@ export function signingPreflight({ platform = process.platform, channel = proces
     } else if (!present(env, 'APPLE_KEYCHAIN_PROFILE')) {
       errors.push('Notarization requires APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID, or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER, or APPLE_KEYCHAIN_PROFILE');
     }
-    if (env.CSC_IDENTITY_AUTO_DISCOVERY === 'false') errors.push('CSC_IDENTITY_AUTO_DISCOVERY must not be false for a stable Mac build');
   } else {
     if (!present(env, 'WIN_CSC_LINK') && !present(env, 'CSC_LINK')) errors.push('Missing WIN_CSC_LINK (or CSC_LINK)');
     if (!present(env, 'WIN_CSC_KEY_PASSWORD') && !present(env, 'CSC_KEY_PASSWORD')) errors.push('Missing WIN_CSC_KEY_PASSWORD (or CSC_KEY_PASSWORD)');

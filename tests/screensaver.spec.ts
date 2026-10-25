@@ -522,3 +522,68 @@ test('wake lock remains opt-in and recovers when visibility changes during a pen
   await expect.poll(() => page.evaluate(() => (window as unknown as { __wake: WakeState }).__wake.secondReleases)).toBe(1);
   await expect(awake).toHaveAttribute('aria-pressed', 'false');
 });
+
+for (const asset of [
+  { symbol: 'BTC', name: 'Bitcoin', price: 67001.5, isPreview: false },
+  { symbol: 'SOL', name: 'Solana', price: 154.25, isPreview: true },
+  { symbol: 'ETH', name: 'Ethereum', price: 3412.75, isPreview: false },
+  { symbol: 'HYPE', name: 'Hyperliquid', price: 38.45, isPreview: true },
+]) {
+  test(`${asset.symbol} native host fixes its edition and owns the display controls`, async ({ page }) => {
+    await page.addInitScript(({ symbol, isPreview }) => {
+      Object.defineProperty(window, 'nativeScreensaver', { value: Object.freeze({ asset: symbol, isPreview }) });
+      const calls = { wake: 0, fullscreen: 0 };
+      (window as unknown as { __nativeCalls: typeof calls }).__nativeCalls = calls;
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: {
+        request: async () => { calls.wake += 1; return { released: false, release: async () => {} }; },
+      } });
+      Object.defineProperty(Element.prototype, 'requestFullscreen', { configurable: true, value: async () => { calls.fullscreen += 1; } });
+    }, asset);
+    const feed = await mockMarket(page, { symbol: asset.symbol, price: asset.price });
+    const conflictingAsset = asset.symbol === 'BTC' ? 'SOL' : 'BTC';
+    await page.goto(`/?asset=${conflictingAsset}&mode=idle`);
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-host', 'native');
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-asset', asset.symbol);
+    await expect(page.getByTestId('price')).toHaveAttribute('aria-label', `${asset.name} ${asset.price.toFixed(2)} US dollars`);
+    await expect(page).toHaveTitle(`Bloxwap Screensaver · ${asset.name}`);
+    await expect(page.locator('.asset-symbol')).toHaveText(asset.name);
+    await expect(page.locator('.asset-pill img')).toHaveAttribute('src', `./brand/${asset.symbol}.svg`);
+    await expect(page.getByRole('link', { name: `Open ${asset.name} on Bloxwap`, exact: true })).toHaveAttribute('href', `https://bloxwap.app/trade/${asset.symbol}`);
+    await expect.poll(() => feed.subscriptions.filter((entry) => entry.type === 'l2Book').length).toBe(1);
+    expect(feed.subscriptions.map((entry) => entry.coin)).toEqual([asset.symbol, asset.symbol]);
+
+    // A native bundle's identity must not change through a browser navigation API.
+    await page.evaluate((nextAsset) => {
+      history.pushState(null, '', `?asset=${nextAsset}`);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, conflictingAsset);
+    await page.mouse.move(120, 200);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('.screensaver')).toHaveAttribute('data-asset', asset.symbol);
+    await expect(page.locator('.screensaver')).toHaveClass(/automatic/);
+    await expect(page.locator('.screensaver')).not.toHaveClass(/controls-visible/);
+    await expect(page.getByRole('navigation', { name: 'Screensaver controls' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Install|Settings/ })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Back to screensaver downloads' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Keep screen awake' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Enter full screen|Exit full screen/ })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('link[rel="manifest"]')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { __nativeCalls: { wake: number; fullscreen: number } }).__nativeCalls)).toEqual({ wake: 0, fullscreen: 0 });
+    expect(feed.subscriptions.filter((entry) => entry.type === 'l2Book')).toHaveLength(1);
+  });
+}
+
+test('native-looking URL parameters cannot activate the native host', async ({ page }) => {
+  await mockMarket(page, { symbol: 'SOL', price: 154.25 });
+  await page.goto('/?asset=SOL&mode=native&nativeScreensaver=true&isPreview=true');
+  await expect(page.getByTestId('price')).toHaveAttribute('aria-label', 'Solana 154.25 US dollars');
+  await expect(page.locator('.screensaver')).toHaveAttribute('data-host', 'browser');
+  await expect(page.locator('.screensaver')).not.toHaveClass(/automatic/);
+  await expect(page.getByRole('link', { name: 'Back to screensaver downloads' })).toBeVisible();
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /manifest-sol\.webmanifest$/);
+  await page.mouse.move(120, 200);
+  await expect(page.getByRole('navigation', { name: 'Screensaver controls' })).toHaveCSS('opacity', '1');
+  await expect(page.getByRole('button', { name: /Install/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enter full screen' })).toBeVisible();
+});

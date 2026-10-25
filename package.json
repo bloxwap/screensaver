@@ -1,6 +1,6 @@
 {
   "name": "@bloxwap/screensaver",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Live Bitcoin, Solana, Ethereum, and Hyperliquid screensavers for Mac, Windows, Linux, and the web.",
   "type": "module",
@@ -13,6 +13,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "tsx --test src/market/*.test.ts src/components/*.test.ts desktop/*.test.cjs scripts/*.test.mjs",
     "test:browser": "playwright test",
+    "test:macos": "node scripts/macos-smoke.mjs",
     "desktop": "npm run build && install-electron && electron .",
     "desktop:pack": "node scripts/desktop-build.mjs --dir",
     "desktop:dist": "node scripts/desktop-build.mjs",

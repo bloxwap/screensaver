@@ -3,19 +3,30 @@ title: Installation
 description: Install, update, or remove an edition on Mac, Windows, or Linux.
 ---
 
-Choose an asset and operating system on the [download page](/#downloads). Each edition opens its selected asset automatically and keeps its own preferences, so you can install more than one edition.
+Choose an asset and operating system on the [download page](/#downloads). Every edition opens its selected asset automatically. You can install more than one edition.
 
 ## Mac
 
-Requires **macOS 13 Ventura or newer**. Choose **Apple silicon** for an M-series Mac or **Intel** for an Intel Mac. Find the processor in **Apple menu → About This Mac**.
+Choose **Apple silicon** for an M-series Mac or **Intel** for an Intel Mac. Find the processor in **Apple menu → About This Mac**. Follow the download's type label: **.saver** is the native `0.2.x` edition; **App** identifies an archived `0.1.x` desktop app.
 
-1. Download the edition's DMG.
-2. Open the DMG and move the app to **Applications**.
-3. Open the app from Applications.
+### Native .saver downloads
 
-A ZIP is available as an alternative: extract it and move the app to Applications. The app runs independently of System Settings' built-in screensaver selection.
+The native build targets **macOS 13 Ventura or newer**. Check the [native host compatibility note](/docs/troubleshooting#macos-host-compatibility) for the versions and runtime behavior actually verified.
 
-Unsigned preview builds may be blocked by macOS. Check the release's signing status and source before opening a downloaded app. Use its [browser preview](/docs/preview) if you prefer to wait for a signed build. Stable Mac releases require signing, notarization, and verification.
+1. Download and open the edition's DMG, or extract its ZIP.
+2. Copy the enclosed `.saver` bundle, such as **Bloxwap Bitcoin Screensaver.saver**, into `~/Library/Screen Savers` for your account. Finder's **Go → Go to Folder** can open that location; create the `Screen Savers` folder if needed.
+3. To install for all users instead, copy the bundle into `/Library/Screen Savers`; administrator access may be required.
+4. Open **System Settings**, search for **Screen Saver**, and select the installed Bloxwap edition. Use the system preview to check it.
+
+macOS controls screen-saver activation, dismissal, locking, and connected-display behavior. A Bloxwap tray process does not need to stay running. The labels and location of the screen-saver controls vary across macOS versions; see [Apple's settings guide](https://support.apple.com/guide/mac-help/mchlp1227/mac).
+
+Preview bundles may be unsigned or ad-hoc signed without a verified publisher identity, and macOS may block them. Check the release's signing status before installing. Use the [browser preview](/docs/preview) if you prefer to wait for a signed build. Stable Mac releases require native bundle signing, notarization, and verification.
+
+If you installed an older `0.1.x` Mac app, quit it from its tray menu before using the native saver. You can then remove that old app from Applications. The `0.2.x` Mac download installs into the Screen Savers folder.
+
+### Archived App downloads
+
+For a download marked **App**, open its DMG or extract its ZIP, move the `.app` into **Applications**, and launch it there. Its own Settings and tray menu manage optional idle activation. It does not appear as a native edition in macOS Screen Saver settings. Quit it from its tray menu before updating or removing it from Applications.
 
 ## Windows
 
@@ -42,13 +53,17 @@ Idle detection depends on the desktop session. Some Wayland compositors do not e
 
 ## Updates and checksums
 
-Quit the edition from its tray/menu-bar menu before installing a newer version of the same edition. Download updates from the website or [GitHub Releases](https://github.com/bloxwap/screensaver/releases). Check the version, processor architecture, and release channel before replacing the app.
+On Mac, select another screen saver and close System Settings before replacing the existing edition's `.saver` bundle in its installation folder. Reopen Screen Saver settings and select the updated edition.
 
-Each release includes `SHA256SUMS` and `release-manifest.json`. The website's download metadata comes from that manifest. The app does not automatically install updates.
+On Windows and Linux, quit the edition from its tray menu before installing a newer version of the same edition. Download updates from the website or [GitHub Releases](https://github.com/bloxwap/screensaver/releases). Check the version, architecture, and release channel before replacing the installed edition.
+
+Each release includes `SHA256SUMS` and `release-manifest.json`. The website's download metadata comes from that manifest. Editions do not automatically install updates.
 
 ## Uninstall
 
-Quit the app first. On Mac, remove it from Applications. On Windows, use **Settings → Apps**. On Linux, delete a portable AppImage or remove the installed DEB using your package manager. Stored preferences may remain after removing the app.
+On Mac, select another screen saver, close System Settings, and remove the edition's `.saver` bundle from `~/Library/Screen Savers` or `/Library/Screen Savers`, wherever you installed it.
+
+On Windows and Linux, quit the app first. Use **Settings → Apps** on Windows. On Linux, delete a portable AppImage or remove the installed DEB using your package manager. Stored preferences may remain after removal.
 
 ## Phones and tablets
 

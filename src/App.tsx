@@ -11,20 +11,24 @@ const LiveChart = lazy(() => import('./components/LiveChart').then((module) => (
 const STATUS_LABEL = { live: 'Live', connecting: 'Connecting', stale: 'Price delayed', offline: 'Offline', reconnecting: 'Reconnecting' };
 
 export default function App() {
-  const [asset, setAsset] = useState(() => getAsset(new URLSearchParams(location.search).get('asset')));
+  // The native host owns its edition and lifecycle. URL parameters only select
+  // editions in browser/Electron displays; they cannot opt into native mode.
+  const [nativeHost] = useState(() => window.nativeScreensaver);
+  const [asset, setAsset] = useState(() => getAsset(nativeHost?.asset ?? new URLSearchParams(location.search).get('asset')));
 
   useEffect(() => {
+    if (nativeHost) return;
     const selectAsset = () => setAsset(getAsset(new URLSearchParams(location.search).get('asset')));
     window.addEventListener('popstate', selectAsset);
     return () => window.removeEventListener('popstate', selectAsset);
-  }, []);
+  }, [nativeHost]);
 
   // Recreate display state when browser navigation changes editions, including the
   // eased chart trail, so a previous asset's readout cannot flash under a new name.
-  return <AssetScreensaver key={asset.symbol} asset={asset} />;
+  return <AssetScreensaver key={asset.symbol} asset={asset} nativeHost={Boolean(nativeHost)} />;
 }
 
-function AssetScreensaver({ asset }: { asset: Asset }) {
+function AssetScreensaver({ asset, nativeHost }: { asset: Asset; nativeHost: boolean }) {
   const market = useMarket(asset);
   const display = useDisplay();
   const [minutes, setMinutes] = useState(0);
@@ -32,7 +36,7 @@ function AssetScreensaver({ asset }: { asset: Asset }) {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
   const status = feedStatus(market, display.now, display.online);
   const live = status === 'live';
-  const browserPreview = !window.screensaver;
+  const browserPreview = !nativeHost && !window.screensaver;
   const downloadsUrl = /\/preview\/(?:index\.html)?$/.test(location.pathname)
     ? new URL('../', location.href).href
     : 'https://bloxwap.github.io/screensaver/';
@@ -40,14 +44,15 @@ function AssetScreensaver({ asset }: { asset: Asset }) {
   useEffect(() => { document.title = `Bloxwap Screensaver · ${asset.name}`; }, [asset.name]);
 
   useEffect(() => {
+    if (nativeHost) return;
     const capture = (event: Event) => { event.preventDefault(); setPrompt(event as InstallPrompt); };
     const installed = () => setPrompt(null);
     window.addEventListener('beforeinstallprompt', capture);
     window.addEventListener('appinstalled', installed);
     return () => { window.removeEventListener('beforeinstallprompt', capture); window.removeEventListener('appinstalled', installed); };
-  }, []);
+  }, [nativeHost]);
 
-  return <main className={`screensaver ${live ? 'is-live' : 'is-waiting'} ${display.controls || installOpen ? 'controls-visible' : ''} ${display.automatic ? 'automatic' : ''} ${browserPreview ? 'browser-preview' : ''}`} data-asset={asset.symbol}>
+  return <main className={`screensaver ${live ? 'is-live' : 'is-waiting'} ${display.controls || installOpen ? 'controls-visible' : ''} ${display.automatic ? 'automatic' : ''} ${browserPreview ? 'browser-preview' : ''}`} data-asset={asset.symbol} data-host={nativeHost ? 'native' : window.screensaver ? 'desktop' : 'browser'}>
     <h1 className="sr-only">Bloxwap {asset.name} screensaver</h1>
     <div className="grid-bg" aria-hidden="true" />
     <Suspense fallback={<div className="chart-region" />}><LiveChart asset={asset} points={market.points} quote={market.quote} windowMinutes={minutes} live={live} now={display.now} /></Suspense>
@@ -75,14 +80,14 @@ function AssetScreensaver({ asset }: { asset: Asset }) {
       </a>
     </footer>
 
-    {!display.automatic && <nav className="display-controls" aria-label="Screensaver controls">
+    {!nativeHost && !display.automatic && <nav className="display-controls" aria-label="Screensaver controls">
       <div className="time-controls" role="group" aria-label="Chart time window">{[0, 5, 15, 60].map((value) => <button key={value} onClick={() => setMinutes(value)} aria-pressed={minutes === value}>{value === 0 ? 'Live' : value === 60 ? '1H' : `${value}M`}</button>)}</div>
       <span className="control-divider" />
       <button onClick={() => setInstallOpen(true)} aria-haspopup="dialog">{window.screensaver ? 'Settings' : 'Install'} <span aria-hidden="true">↓</span></button>
       {'wakeLock' in navigator && <button className="awake-button" aria-label="Keep screen awake" title="Keep screen awake" aria-pressed={display.awake} onClick={() => display.setAwake(!display.awake)}><span className="awake-label">Keep awake</span><svg className="awake-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg><span className="toggle-dot" /></button>}
       <button onClick={() => void display.toggleFullscreen()} aria-label={display.fullscreen ? 'Exit full screen' : 'Enter full screen'} title="Full screen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg></button>
     </nav>}
-    {display.message && <div className="toast" role="status">{display.message}<button onClick={() => display.setMessage('')} aria-label="Dismiss message">×</button></div>}
-    {installOpen && <InstallDialog asset={asset} onClose={() => setInstallOpen(false)} prompt={prompt} onPromptUsed={() => setPrompt(null)} />}
+    {!nativeHost && display.message && <div className="toast" role="status">{display.message}<button onClick={() => display.setMessage('')} aria-label="Dismiss message">×</button></div>}
+    {!nativeHost && installOpen && <InstallDialog asset={asset} onClose={() => setInstallOpen(false)} prompt={prompt} onPromptUsed={() => setPrompt(null)} />}
   </main>;
 }

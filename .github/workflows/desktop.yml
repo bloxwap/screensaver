@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/**'
       - 'desktop/**'
+      - 'native/**'
       - 'public/**'
       - 'config/assets.json'
       - 'scripts/**'
@@ -20,6 +21,7 @@ on:
     paths:
       - 'src/**'
       - 'desktop/**'
+      - 'native/**'
       - 'public/**'
       - 'config/assets.json'
       - 'scripts/**'
@@ -127,13 +129,59 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Check the native Mac build toolchain
+        if: matrix.platform == 'macos'
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          expected_machine=arm64
+          if [ "$TARGET_ARCH" = x64 ]; then expected_machine=x86_64; fi
+          test "$(uname -m)" = "$expected_machine"
+          xcrun --find swiftc
+          xcrun --sdk macosx --show-sdk-version
       - name: Check distribution prerequisites
         run: node scripts/signing-preflight.mjs --platform '${{ matrix.platform }}' --channel "$SCREENSAVER_RELEASE_CHANNEL"
       - run: npm test
+      - name: Test native Mac bundle resources
+        if: matrix.platform == 'macos'
+        timeout-minutes: 3
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          RESOURCE_LOG: ${{ runner.temp }}/native-resources-${{ matrix.asset }}-${{ matrix.arch }}.log
+        run: |
+          native_arch=arm64
+          if [ "$TARGET_ARCH" = x64 ]; then native_arch=x86_64; fi
+          xcrun swiftc -swift-version 5 -target "${native_arch}-apple-macos13.0" \
+            -module-name BloxwapNativeResourceTests -framework WebKit \
+            native/macos/Edition.swift native/macos/BundleSchemeHandler.swift \
+            native/macos/tests/NativeResourceTests.swift \
+            -o "$RUNNER_TEMP/BloxwapNativeResourceTests"
+          "$RUNNER_TEMP/BloxwapNativeResourceTests" 2>&1 | tee "$RESOURCE_LOG"
       - name: Build edition installers
         run: npm run desktop:dist -- --asset '${{ matrix.asset }}' --arch '${{ matrix.arch }}'
+      - name: Exercise the native Mac screensaver and WebKit renderer
+        if: matrix.platform == 'macos'
+        timeout-minutes: 5
+        env:
+          NATIVE_OUTPUT: release/${{ matrix.slug }}-macos-${{ matrix.arch }}
+          ASSET_SYMBOL: ${{ matrix.asset }}
+          TARGET_ARCH: ${{ matrix.arch }}
+          SMOKE_LOG: ${{ runner.temp }}/native-smoke-${{ matrix.asset }}-${{ matrix.arch }}.log
+        run: |
+          node scripts/macos-smoke.mjs --directory "$NATIVE_OUTPUT" --asset "$ASSET_SYMBOL" --arch "$TARGET_ARCH" 2>&1 | tee "$SMOKE_LOG"
       - name: Verify packaged distribution status
         run: node scripts/verify-signing.mjs --platform '${{ matrix.platform }}' --channel "$SCREENSAVER_RELEASE_CHANNEL" --directory 'release/${{ matrix.slug }}-${{ matrix.platform }}-${{ matrix.arch }}'
+      - name: Retain native Mac runtime verification
+        if: always() && matrix.platform == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-smoke-${{ matrix.asset }}-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/native-smoke-${{ matrix.asset }}-${{ matrix.arch }}.log
+            ${{ runner.temp }}/native-resources-${{ matrix.asset }}-${{ matrix.arch }}.log
+            test-results/native-macos/**
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.asset }}-${{ matrix.platform }}-${{ matrix.arch }}

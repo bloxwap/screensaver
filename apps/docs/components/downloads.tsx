@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { asset as assetUrl, repository } from '@/lib/site';
+import { macInstallationSummary, macPackageDescription, macPackageLabel, type ReleaseDownloadKind } from '@/lib/releases';
 
 export type ScreenAsset = {
   symbol: string;
@@ -19,6 +20,7 @@ export type ReleaseDownload = {
   size: number;
   sha256: string;
   signed: boolean;
+  kind?: ReleaseDownloadKind;
 };
 
 export type ReleaseManifest = {
@@ -81,17 +83,17 @@ function DownloadCell({ screenAsset, platform, manifest }: { screenAsset: Screen
       const architecture = architectureLabel(platform.id, arch);
       if (!download) return <span key={arch} className="download-architecture-unavailable">{architecture} coming soon</span>;
       return <div key={arch} className="download-option">
-        <a className="download-link" href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architecture}), version ${manifest.version}, ${download.format}, ${fileSize(download.size)}`}>
+        <a className="download-link" href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architecture}), ${platform.id === 'macos' ? `${macPackageDescription(download)}, ` : ''}version ${manifest.version}, ${download.format}, ${fileSize(download.size)}`}>
           <span>{platform.id === 'macos' ? architecture : 'Download'}</span><DownloadIcon />
         </a>
-        <span className="download-file">{platform.id !== 'macos' && `${architecture} · `}{download.format === 'AppImage' ? 'AppImage' : download.format.toUpperCase()} · {fileSize(download.size)}</span>
+        <span className="download-file">{platform.id === 'macos' && `${macPackageLabel(download)} · `}{platform.id !== 'macos' && `${architecture} · `}{download.format === 'AppImage' ? 'AppImage' : download.format.toUpperCase()} · {fileSize(download.size)}</span>
       </div>;
     })}
     {otherDownloads.length > 0 && <details className="download-formats">
       <summary>Other formats</summary>
       <ul>{otherDownloads.map((download) => <li key={download.filename}>
-        <a href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architectureLabel(platform.id, download.arch)}), ${download.format}, ${fileSize(download.size)}`}>
-          {download.format.toUpperCase()}<span>{architectureLabel(platform.id, download.arch)} · {fileSize(download.size)}</span>
+        <a href={download.url} aria-label={`Download ${screenAsset.name} for ${platform.label} (${architectureLabel(platform.id, download.arch)}), ${platform.id === 'macos' ? `${macPackageDescription(download)}, ` : ''}${download.format}, ${fileSize(download.size)}`}>
+          {download.format.toUpperCase()}<span>{platform.id === 'macos' && `${macPackageLabel(download)} · `}{architectureLabel(platform.id, download.arch)} · {fileSize(download.size)}</span>
         </a>
       </li>)}</ul>
     </details>}
@@ -101,6 +103,7 @@ function DownloadCell({ screenAsset, platform, manifest }: { screenAsset: Screen
 export function Downloads({ assets, manifest }: { assets: readonly ScreenAsset[]; manifest: ReleaseManifest }) {
   const available = manifest.downloads.some(publicDownload);
   const unsigned = manifest.downloads.some((download) => publicDownload(download) && download.platform !== 'linux' && !download.signed);
+  const macInstallation = macInstallationSummary(manifest.downloads.filter(publicDownload));
 
   return <section className="downloads-section" id="downloads" aria-labelledby="downloads-heading">
     <div className="downloads-heading">
@@ -134,6 +137,7 @@ export function Downloads({ assets, manifest }: { assets: readonly ScreenAsset[]
     </div>
 
     <div className="downloads-footnote"><p>Fresh prices need an internet connection. No account or wallet required.</p><Link href="/docs/installation/">Installation & setup <span aria-hidden="true">↗</span></Link></div>
+    {macInstallation && <p className="download-verification">{macInstallation}</p>}
     {available && <p className="download-verification">Downloads are hosted on <a href={manifest.releaseUrl ?? `${repository}/releases`}>GitHub Releases</a>. Checksums are included with each release.</p>}
   </section>;
 }

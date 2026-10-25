@@ -6,14 +6,20 @@ The [Desktop installers workflow](https://github.com/bloxwap/screensaver/actions
 
 Each of BTC, SOL, ETH, and HYPE produces these files:
 
-| OS | Architecture | Formats |
+| OS | Architecture | Contents and formats |
 | --- | --- | --- |
-| macOS 13+ | arm64 | DMG, ZIP |
-| macOS 13+ | x64 | DMG, ZIP |
-| Windows | x64 | NSIS EXE |
-| Linux | x64 | AppImage, DEB |
+| macOS 13+ | arm64 | Native `.saver` bundle in DMG and ZIP |
+| macOS 13+ | x64 | Native `.saver` bundle in DMG and ZIP |
+| Windows | x64 | Electron app in NSIS EXE |
+| Linux | x64 | Electron app in AppImage and DEB |
 
-A complete release has 28 installers/archives. Names are `bloxwap-screensaver-{asset-slug}-{version}-{os}-{arch}.{format}`. Separate package identities and preferences let editions coexist. Record tested Windows versions and Linux distributions/sessions in each release's evidence.
+A complete release has 16 build targets and 28 installers/archives. Names are `bloxwap-screensaver-{asset-slug}-{version}-{os}-{arch}.{format}`. Separate bundle/app identities let editions coexist. macOS 13 is the native build's deployment target; record actual native host versions tested separately, alongside Windows versions and Linux distributions/sessions.
+
+## Native Mac transition in 0.2
+
+The `0.2.x` Mac distribution uses a Swift `ScreenSaverView` subclass with a `WKWebView` for the bundled display. DMG and ZIP files contain a `.saver` bundle, installed in `~/Library/Screen Savers` or `/Library/Screen Savers` and selected through macOS Screen Saver settings. macOS manages activation, preview, dismissal, lock behavior, and connected displays.
+
+Archived `0.1.x` Mac artifacts remain Electron apps. Preserve their metadata and label them as apps when reading older manifests. Users migrating to the native saver should quit/remove the old Mac app separately before selecting the `.saver`; the native edition has no tray process or app idle timer. Windows and Linux continue to use the Electron host. [Task #14](https://github.com/bloxwap/screensaver/issues/14) tracks the native transition and verification.
 
 ## Public preview builds
 
@@ -34,16 +40,16 @@ The aggregate release job validates all expected artifacts before publication. M
 
 1. Complete [signing setup](.github/SIGNING.md) and native distribution checks in [#8](https://github.com/bloxwap/screensaver/issues/8).
 2. Set the intended version in `package.json` and keep the lockfile consistent.
-3. Run the required local and CI checks on the intended commit.
+3. Run the required local and CI checks, then integrate the intended commit into `main`.
 4. Create and push a `v{version}` tag matching `package.json`.
-5. Confirm the matrix, Mac signing/notarization, Windows signing, checksums, and aggregate validation pass.
+5. Confirm the matrix, native Mac bundle signing/notarization, Windows signing, checksums, and aggregate validation pass.
 6. Verify the public site and downloaded artifacts before closing the launch task.
 
 Stable publication fails when required credentials or signing verification are missing. [SIGNING.md](.github/SIGNING.md) lists credential names and verification commands. Store credentials in the configured release environment; pull-request workflows must not need them.
 
 ## Download manifest and site refresh
 
-Every public release contains `SHA256SUMS` and `release-manifest.json`. The manifest records asset, OS, architecture, version, public URL, filename, bytes, SHA-256, and signing status.
+Every public release contains `SHA256SUMS` and `release-manifest.json`. The manifest records asset, OS, architecture, version, public URL, filename, bytes, SHA-256, signing status, and `kind`: `screensaver` for native Mac bundles or `application` for desktop apps. A missing `kind` in a legacy schema-1 entry means `application`, including on Mac. Preserve that meaning when reading archived releases; never relabel an old app artifact as a native saver.
 
 The homepage consumes `config/releases.json` at build time. URLs point to a specific public release without GitHub authentication. An empty manifest renders unavailable states.
 
@@ -56,7 +62,7 @@ npm run docs:build
 npm run docs:preview
 ```
 
-Use `node scripts/fetch-release.mjs --tag TAG` to select a release. The release workflow explicitly dispatches the documentation refresh with its published tag.
+Use `node scripts/fetch-release.mjs --tag TAG` to select a release. The release workflow explicitly dispatches the documentation refresh. Stable publication selects its tag; preview publication preserves a valid stable homepage when one already exists.
 
 Malformed, incomplete, or failed release data must not overwrite the last known-good manifest. Review `config/releases.json` before committing a manually selected manifest.
 
@@ -70,8 +76,11 @@ For a website rollback, select a previous verified tag and rebuild/redeploy the 
 
 Record the tag, commit, workflow run, artifact hashes, and tested OS/browser versions in [launch issue #12](https://github.com/bloxwap/screensaver/issues/12).
 
+The native build and standalone `ScreenSaverView`/`WKWebView` smoke check have passed on macOS 27.2. Sustained rendering inside the actual macOS System Settings/`legacyScreenSaver` host remains unverified. The [compatibility note](apps/docs/content/docs/troubleshooting.mdx#macos-host-compatibility) links the developer-reported macOS 26.4 issue; it does not establish a fix or a failure on every Mac. Keep real-host certification open in [#14](https://github.com/bloxwap/screensaver/issues/14).
+
 - Check all 12 asset × OS choices without GitHub sign-in, including every advertised architecture and format.
-- Install and launch downloaded editions on their supported OS. Check the asset, QR, independent preferences, tray, optional idle activation, and uninstall.
+- On Mac, inspect the archived `.saver`, install it in a Screen Savers folder, select it in macOS settings, and verify real system preview/activation/dismissal, the correct asset, connected-display behavior, and bundle removal. Test the actual macOS host as well as the standalone native harness.
+- On Windows/Linux, install and launch the apps. Check the asset, QR, independent preferences, tray, optional idle activation, and uninstall.
 - Record native signature/notarization results for signed releases. Browser tests and packaging success do not establish native installation behavior.
 - Open four live previews; check fullscreen exit, return navigation, stale/offline behavior, keyboard controls, reduced motion, and mobile layout.
 - Check deployed homepage/docs/search, icons/fonts, and direct preview URLs under `/screensaver/`.

@@ -2,14 +2,15 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
-import { REPOSITORY, releaseResumeState, sha256File, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
+import { REPOSITORY, releaseNotes, releaseResumeState, sha256File, validateManifest, verifyReleaseAssets } from './lib/releases.mjs';
+import { fetchReleaseManifest } from './fetch-release.mjs';
 
 const { values } = parseArgs({ options: {
   directory: { type: 'string', default: 'release' }, metadata: { type: 'string', default: 'release-metadata' },
   target: { type: 'string' },
 } });
 if (!values.target || !/^[a-f0-9]{40}$/.test(values.target)) throw new Error('--target requires the full source commit SHA');
-const manifest = validateManifest(JSON.parse(await readFile(resolve(values.metadata, 'release-manifest.json'), 'utf8')));
+const manifest = validateManifest(JSON.parse(await readFile(resolve(values.metadata, 'release-manifest.json'), 'utf8')), { requireCurrentKinds: true });
 if (manifest.channel === 'unreleased') throw new Error('Cannot publish an empty release');
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const allReleases = JSON.parse(gh('api', `repos/${REPOSITORY}/releases?per_page=100`));
@@ -17,14 +18,13 @@ const existing = allReleases.find((release) => release.tag_name === manifest.tag
 const tagCommitSha = existing && !existing.draft
   ? gh('api', `repos/${REPOSITORY}/commits/${encodeURIComponent(manifest.tag)}`, '--jq', '.sha')
   : null;
-const resume = releaseResumeState(manifest, existing, { sourceSha: values.target, tagCommitSha });
+const publishedManifest = existing && !existing.draft ? await fetchReleaseManifest(existing) : null;
+const resume = releaseResumeState(manifest, existing, { sourceSha: values.target, tagCommitSha, publishedManifest });
 if (resume === 'verified-public') {
   console.log(`Verified existing immutable release ${manifest.releaseUrl}; continuing public metadata and website refresh.`);
   process.exit(0);
 }
-const notes = manifest.channel === 'preview'
-  ? `Automated preview of Bloxwap Screensaver ${manifest.version}.\n\nFour editions: Bitcoin, Solana, Ethereum, and Hyperliquid.\nMac: Apple Silicon and Intel. Windows and Linux: x64.\n\nThese preview installers are unsigned and have not been certified by Apple or Microsoft. Your operating system may require additional confirmation. They are desktop apps with optional idle activation, not native system screensaver plugins.\n\nDownload and installation help: https://bloxwap.github.io/screensaver/\n\nAll 28 installers are accompanied by SHA256SUMS and release-manifest.json. Source: ${values.target}.\n`
-  : `Bloxwap Screensaver ${manifest.version}.\n\nFour editions: Bitcoin, Solana, Ethereum, and Hyperliquid. Mac installers are signed and notarized; Windows installers are signed and timestamped. Linux installers include SHA-256 checksums.\n\nDownload and installation help: https://bloxwap.github.io/screensaver/\n\nSource: ${values.target}.\n`;
+const notes = releaseNotes(manifest, values.target);
 const notesPath = resolve(values.metadata, 'release-notes.md');
 await writeFile(notesPath, notes);
 const args = ['release', 'create', manifest.tag, '--repo', REPOSITORY, '--target', values.target, '--draft', '--title', `Bloxwap Screensaver ${manifest.version}${manifest.channel === 'preview' ? ' · Preview' : ''}`, '--notes-file', notesPath];
