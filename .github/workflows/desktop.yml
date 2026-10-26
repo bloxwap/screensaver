@@ -47,6 +47,19 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  security:
+    # Release scan on a mini, parallel with prepare/build. Skipped on PRs.
+    if: github.event_name != 'pull_request'
+    uses: bloxwap/.github/.github/workflows/security-scan.yml@90c5e7f20cef611a83ea7db51f9b85478d714fa6 # v1
+    permissions:
+      contents: read
+    with:
+      runs-on: '["self-hosted","macOS","ARM64"]'
+      profile: release
+      secrets-days: "7"
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SECURITY_WEBHOOK_URL }}
+
   prepare:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -197,7 +210,7 @@ jobs:
           retention-days: 14
 
   publish:
-    needs: [prepare, build]
+    needs: [prepare, build, security]
     if: needs.prepare.outputs.publish == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

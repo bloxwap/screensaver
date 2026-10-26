@@ -21,6 +21,19 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  security:
+    # build/deploy run on ubuntu; the scan runs on a mini. Skipped on PRs.
+    if: github.event_name != 'pull_request'
+    uses: bloxwap/.github/.github/workflows/security-scan.yml@90c5e7f20cef611a83ea7db51f9b85478d714fa6 # v1
+    permissions:
+      contents: read
+    with:
+      runs-on: '["self-hosted","macOS","ARM64"]'
+      profile: release
+      secrets-days: "7"
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SECURITY_WEBHOOK_URL }}
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -64,7 +77,7 @@ jobs:
 
   deploy:
     if: (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: build
+    needs: [build, security]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
