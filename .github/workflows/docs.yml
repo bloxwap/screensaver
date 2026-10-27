@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   security:
-    # build/deploy run on ubuntu; the scan runs on a mini. Skipped on PRs.
+    # build/smoke run on the minis; deploy stays on GitHub's runner for Pages. Skipped on PRs.
     if: github.event_name != 'pull_request'
     uses: bloxwap/.github/.github/workflows/security-scan.yml@2a70724cd0d803abef5f5a7c64c46065f4fda19b # v1.1.0
     permissions:
@@ -35,7 +35,9 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SECURITY_WEBHOOK_URL }}
 
   build:
-    runs-on: ubuntu-latest
+    # Security: never run fork PR code on the self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 25
     env:
       NEXT_PUBLIC_BASE_PATH: /screensaver
@@ -45,7 +47,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: npm
+          package-manager-cache: false
       - run: npm ci
       - name: Resolve verified public downloads
         env:
@@ -115,7 +117,7 @@ jobs:
   smoke:
     needs: deploy
     if: needs.deploy.outputs.page_url != ''
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 15
     env:
       DOCS_URL: ${{ needs.deploy.outputs.page_url }}
@@ -124,7 +126,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: npm
+          package-manager-cache: false
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:site

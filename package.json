@@ -9,7 +9,7 @@
   "repository": "https://github.com/bloxwap/screensaver",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --open",
-    "build": "node scripts/third-party-notices.mjs && tsc --noEmit && vite build",
+    "build": "node scripts/third-party-notices.mjs && node scripts/tsc-or-tsrs.mjs --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "tsx --test src/market/*.test.ts src/components/*.test.ts desktop/*.test.cjs scripts/*.test.mjs",
     "test:browser": "playwright test",
@@ -46,6 +46,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "sharp": "0.35.5",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.5",

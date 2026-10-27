@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 3906",
     "build": "next build",
-    "check": "fumadocs-mdx && next typegen && tsc --noEmit",
+    "check": "fumadocs-mdx && next typegen && node ../../scripts/tsc-or-tsrs.mjs --noEmit",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
