@@ -97,10 +97,11 @@ jobs:
             if (process.env.GITHUB_REF_NAME !== `v${version}` || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Stable tags must exactly match the package version');
             execFileSync('git', ['merge-base', '--is-ancestor', process.env.GITHUB_SHA, `origin/${process.env.DEFAULT_BRANCH}`]);
           }
-          // Apple silicon builds run on the Mac minis. The minis have no Intel, Windows or Linux
-          // hosts, so those native targets stay on GitHub-hosted runners (free for this public repo).
+          // Native builds stay on GitHub-hosted runners (free for this public repo). The minis have no
+          // Intel, Windows or Linux hosts, and the macOS WebKit smoke needs an unlocked desktop that
+          // some minis lack (they sit at loginwindow), so arm64 would fail on whichever host it lands.
           const targets = [
-            { platform: 'macos', arch: 'arm64', runner: ['self-hosted', 'macOS', 'ARM64'] },
+            { platform: 'macos', arch: 'arm64', runner: 'macos-15' },
             { platform: 'macos', arch: 'x64', runner: 'macos-15-intel' },
             { platform: 'windows', arch: 'x64', runner: 'windows-2025' },
             { platform: 'linux', arch: 'x64', runner: 'ubuntu-24.04' },
@@ -142,12 +143,10 @@ jobs:
       APPLE_TEAM_ID: ${{ needs.prepare.outputs.channel == 'stable' && secrets.APPLE_TEAM_ID || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The minis keep ~/.npm on disk; a remote npm cache save there costs minutes, not seconds.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: ${{ runner.environment == 'github-hosted' && 'npm' || '' }}
-          package-manager-cache: false
+          cache: npm
       - run: npm ci
       - name: Check the native Mac build toolchain
         if: matrix.platform == 'macos'
