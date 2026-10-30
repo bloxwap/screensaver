@@ -61,7 +61,9 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SECURITY_WEBHOOK_URL }}
 
   prepare:
-    runs-on: ubuntu-24.04
+    # Security: never run fork PR code on the self-hosted runner. build and publish need prepare, so they skip too.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -76,6 +78,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          package-manager-cache: false
       - name: Plan native builds and immutable release tag
         id: plan
         shell: bash
@@ -94,6 +97,9 @@ jobs:
             if (process.env.GITHUB_REF_NAME !== `v${version}` || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Stable tags must exactly match the package version');
             execFileSync('git', ['merge-base', '--is-ancestor', process.env.GITHUB_SHA, `origin/${process.env.DEFAULT_BRANCH}`]);
           }
+          // Native builds stay on GitHub-hosted runners (free for this public repo). The minis have no
+          // Intel, Windows or Linux hosts, and the macOS WebKit smoke needs an unlocked desktop that
+          // some minis lack (they sit at loginwindow), so arm64 would fail on whichever host it lands.
           const targets = [
             { platform: 'macos', arch: 'arm64', runner: 'macos-15' },
             { platform: 'macos', arch: 'x64', runner: 'macos-15-intel' },
@@ -212,7 +218,7 @@ jobs:
   publish:
     needs: [prepare, build, security]
     if: needs.prepare.outputs.publish == 'true' && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
     environment: ${{ needs.prepare.outputs.channel == 'stable' && 'desktop-release' || 'desktop-preview' }}
     permissions:
@@ -228,6 +234,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          package-manager-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: desktop-*
