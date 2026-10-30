@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   security:
-    # build/smoke run on the minis; deploy stays on GitHub's runner for Pages. Skipped on PRs.
+    # Every job runs on the minis. Skipped on PRs.
     if: github.event_name != 'pull_request'
     uses: bloxwap/.github/.github/workflows/security-scan.yml@2a70724cd0d803abef5f5a7c64c46065f4fda19b # v1.1.0
     permissions:
@@ -80,7 +80,7 @@ jobs:
   deploy:
     if: (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [build, security]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 10
     permissions:
       contents: read
