@@ -2,7 +2,6 @@ name: Website
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -14,16 +13,16 @@ on:
 permissions:
   contents: read
 
-# PR builds can replace an earlier check. Deployments serialize so a release
-# refresh cannot race a default-branch publication.
+# PR and non-main push checks can replace earlier checks. Deployments serialize
+# so a release refresh cannot race a default-branch publication.
 concurrency:
-  group: website-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'pages' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: website-${{ github.event_name == 'pull_request' && github.event.pull_request.number || (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main') }}
 
 jobs:
   security:
     # Every job runs on the minis. Skipped on PRs.
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     uses: bloxwap/.github/.github/workflows/security-scan.yml@2a70724cd0d803abef5f5a7c64c46065f4fda19b # v1.1.0
     permissions:
       contents: read
@@ -64,11 +63,27 @@ jobs:
             node scripts/fetch-release.mjs
           fi
       - run: bun run docs:check
+      # docs:build also runs the app build used by the browser tests.
       - run: bun run docs:build
       - run: bun run playwright install chromium webkit
-      - run: bun run test:site
+      - name: Run unit, browser, and site tests in parallel
+        shell: bash
+        run: |
+          bun run test &
+          unit_pid=$!
+          bun run test:browser &
+          browser_pid=$!
+          bun run test:site &
+          site_pid=$!
+
+          # Wait for every suite, even if an earlier one fails (bash -e).
+          status=0
+          wait "$unit_pid" || status=1
+          wait "$browser_pid" || status=1
+          wait "$site_pid" || status=1
+          exit "$status"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         with:
           path: apps/docs/out
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
