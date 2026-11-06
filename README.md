@@ -103,7 +103,7 @@ To refresh from a sibling checkout with its font dependency installed:
 npm run sync:bloxwap
 ```
 
-The HIG informs readable numeric labels, persistent stale/offline states, a chart text summary, keyboard focus, visible dialog dismissal, touch targets, and reduced motion. The candidate HIG chart wrapper targets an older chart SDK, so this app uses the current chart SDK directly.
+The HIG informs readable numeric labels, persistent stale/offline states, a chart text summary, keyboard focus, visible dialog dismissal, touch targets, and reduced motion. The candidate HIG chart wrapper targets an older chart SDK, so this app uses the current chart SDK directly. Documentation styles import `@bloxwap/hig/tokens/css` from the published `@bloxwap/hig@0.2.0` package. Its MIT notice ships at `apps/docs/public/licenses/hig-MIT.txt`.
 
 ## Layout
 
