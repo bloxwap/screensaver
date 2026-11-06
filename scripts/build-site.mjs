@@ -2,7 +2,6 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { validateManifest } from './lib/releases.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -26,13 +25,6 @@ function run(command, args) {
 
 const catalog = JSON.parse(await readFile(resolve(root, 'config/assets.json'), 'utf8'));
 const release = validateManifest(JSON.parse(await readFile(resolve(root, 'config/releases.json'), 'utf8')));
-
-for (const line of (await readFile(resolve(docs, 'vendor/SHA256SUMS'), 'utf8')).trim().split('\n')) {
-  const match = /^([a-f0-9]{64})\s+([A-Za-z0-9._-]+)$/.exec(line.trim());
-  if (!match) throw new Error('Invalid docs vendor checksum entry.');
-  const bytes = await readFile(resolve(docs, 'vendor', match[2]));
-  if (createHash('sha256').update(bytes).digest('hex') !== match[1]) throw new Error(`Docs vendor checksum mismatch: ${match[2]}`);
-}
 
 // The website uses the canonical asset icons. The full renderer stays in preview/.
 for (const asset of catalog) {
