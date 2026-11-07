@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@bloxwap/font": "0.1.2",
-    "@bloxwap/hig-tokens": "file:vendor/bloxwap-hig-tokens-0.1.0-candidate.sha872906a9.tgz",
+    "@bloxwap/hig": "0.2.0",
     "fumadocs-core": "16.17.1",
     "fumadocs-mdx": "15.4.7",
     "fumadocs-ui": "16.17.1",

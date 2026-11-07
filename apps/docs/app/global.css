@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
-@import '@bloxwap/hig-tokens/css';
+@import '@bloxwap/hig/tokens/css';
 
 /* Fumadocs uses the same HIG token roles as Bloxwap's other project sites. */
 :root,
