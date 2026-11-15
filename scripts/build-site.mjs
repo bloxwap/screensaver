@@ -13,11 +13,11 @@ if (basePath !== '' && (!basePath.startsWith('/') || basePath.endsWith('/') || b
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
+  const resolved = command === 'npm' && process.platform === 'win32' ? 'npm.cmd' : command;
+  const result = spawnSync(resolved, args, {
     cwd: root,
     stdio: 'inherit',
     env: { ...process.env, NEXT_PUBLIC_BASE_PATH: basePath, NEXT_TELEMETRY_DISABLED: '1' },
-    shell: process.platform === 'win32',
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);

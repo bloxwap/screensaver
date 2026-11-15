@@ -31,7 +31,7 @@ export async function buildDesktop(args = process.argv.slice(2)) {
     const npmCLI = process.env.npm_execpath;
     const build = npmCLI
       ? spawnSync(process.execPath, [npmCLI, 'run', 'build'], { cwd: options.projectRoot, stdio: 'inherit' })
-      : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: options.projectRoot, stdio: 'inherit', shell: process.platform === 'win32' });
+      : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: options.projectRoot, stdio: 'inherit' });
     if (build.error) throw build.error;
     if (build.status !== 0) throw new Error(`Renderer build failed with exit code ${build.status ?? 'unknown'}.`);
   }
