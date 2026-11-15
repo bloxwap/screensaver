@@ -35,9 +35,12 @@ function render(downloads) {
 }
 
 function assetRow(html, symbol) {
-  const match = html.match(new RegExp(`<tr[^>]*data-asset="${symbol}"[^>]*>[\\s\\S]*?</tr>`));
-  assert.ok(match, `${symbol} download row is rendered`);
-  return match[0];
+  const needle = `data-asset="${symbol}"`;
+  const attr = html.indexOf(needle);
+  const start = attr === -1 ? -1 : html.lastIndexOf('<tr', attr);
+  const end = attr === -1 ? -1 : html.indexOf('</tr>', attr);
+  assert.ok(start !== -1 && end !== -1, `${symbol} download row is rendered`);
+  return html.slice(start, end + 5);
 }
 
 function downloadNames(html) {
@@ -83,6 +86,6 @@ test('mixed releases keep app and native saver instructions attached to the corr
   assert.doesNotMatch(solana, /desktop app|App ·/);
   assert.match(html, /Mac downloads marked \.saver use the system screen saver settings\. Downloads marked App are desktop apps\./);
   for (const symbol of ['BTC', 'SOL']) {
-    assert.match(assetRow(html, symbol), new RegExp(`href="[^\"]*/preview/\\?asset=${symbol}"`));
+    assert.ok(assetRow(html, symbol).includes(`/preview/?asset=${symbol}"`), `${symbol} preview link is rendered`);
   }
 });

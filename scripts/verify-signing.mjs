@@ -10,6 +10,19 @@ import { macOSBuildPlan, verifyMacOSBundle } from './macos-build.mjs';
 
 const FORMATS = { macos: ['dmg', 'zip'], windows: ['exe'], linux: ['AppImage', 'deb'] };
 const HOST = { macos: 'darwin', windows: 'win32', linux: 'linux' };
+const INSTALLER_PATTERNS = {
+  macos: {
+    dmg: /^bloxwap-screensaver-(bitcoin|solana|ethereum|hyperliquid)-([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)-macos-(arm64|x64)\.dmg$/,
+    zip: /^bloxwap-screensaver-(bitcoin|solana|ethereum|hyperliquid)-([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)-macos-(arm64|x64)\.zip$/,
+  },
+  windows: {
+    exe: /^bloxwap-screensaver-(bitcoin|solana|ethereum|hyperliquid)-([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)-windows-(arm64|x64)\.exe$/,
+  },
+  linux: {
+    AppImage: /^bloxwap-screensaver-(bitcoin|solana|ethereum|hyperliquid)-([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)-linux-(arm64|x64)\.AppImage$/,
+    deb: /^bloxwap-screensaver-(bitcoin|solana|ethereum|hyperliquid)-([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)-linux-(arm64|x64)\.deb$/,
+  },
+};
 
 export async function sha256File(file) {
   const hash = createHash('sha256');
@@ -106,8 +119,8 @@ export async function verifySigning({ platform = process.platform, channel = pro
     if (!entry.isFile()) continue;
     const format = FORMATS[platform].find((extension) => entry.name.endsWith(`.${extension}`));
     if (!format) continue;
-    const pattern = new RegExp('^bloxwap-screensaver-(bitcoin|solana|ethereum|hyperliquid)-([0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?)-' + platform + '-(arm64|x64)\\.' + format + '$');
-    const match = entry.name.match(pattern);
+    const pattern = INSTALLER_PATTERNS[platform]?.[format];
+    const match = pattern && entry.name.match(pattern);
     if (!match) throw new Error(`Unexpected installer filename: ${entry.name}`);
     if (platform !== 'macos' && match[3] !== 'x64') throw new Error('Windows and Linux releases currently support x64 only.');
     const file = path.join(root, entry.name);
