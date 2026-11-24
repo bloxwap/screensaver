@@ -55,7 +55,9 @@
   "overrides": {
     "glob@^11": "14.0.2",
     "minimatch@^9": "11.0.1",
-    "minimatch@^10": "11.0.1"
+    "minimatch@^10": "11.0.1",
+    "next": "16.4.6",
+    "tiny-secp256k1": "2.2.5"
   },
   "workspaces": [
     "apps/docs"

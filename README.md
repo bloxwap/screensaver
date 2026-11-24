@@ -20,7 +20,7 @@ The QR uses white SVG modules on a near-black (`#0a0a0a`) background and Q-level
 Requires Node.js 24 or newer. npm is the workspace's lockfile authority.
 
 ```sh
-npm ci
+bun install --frozen-lockfile
 npm run dev
 ```
 
